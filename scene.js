@@ -25,7 +25,7 @@ window.FB = window.FB || {};
     gameStats: { home: {}, away: {} },
     log: [],
   };
-  FB.diffMult = { freshman: 0.78, jv: 0.95, varsity: 1.15, allspc: 1.32, easy: 0.8, normal: 1.0, hard: 1.15 };
+  FB.diffMult = { freshman: 0.86, jv: 1.05, varsity: 1.27, allspc: 1.45, easy: 0.88, normal: 1.10, hard: 1.27 };
   FB.diffLabels = { freshman: 'FRESHMAN', jv: 'JV', varsity: 'VARSITY', allspc: 'ALL SPC' };
   FB.teams = { home: null, away: null };
   FB.lineups = { home: null, away: null };

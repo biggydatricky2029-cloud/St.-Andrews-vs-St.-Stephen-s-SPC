@@ -60,102 +60,226 @@
     const secondary = new THREE.Color(team.secondaryColor);
     const primaryHex = '#' + primary.getHexString();
     const secondaryHex = '#' + secondary.getHexString();
-    const skinMat = new THREE.MeshLambertMaterial({ color: 0xc48a66 }); // generic skin tone
+    const skinMat = new THREE.MeshLambertMaterial({ color: 0xc48a66 });
+    const gloveMat = new THREE.MeshLambertMaterial({ color: 0x141414 });
+    const cleatMat = new THREE.MeshLambertMaterial({ color: 0x141414 });
+    const sockMat = new THREE.MeshLambertMaterial({ color: 0xf5f5f5 });
+    const beltMat = new THREE.MeshLambertMaterial({ color: 0x141414 });
 
     // --- Proportional scaling from real listed height/weight ---
-    // Baseline: 5'10" (70 in) and 170 lbs → scale factors of 1.0.
     const heightIn = parseHeightInches(player.height) || 70;
     const weightLb = (player.weight && player.weight > 0) ? player.weight : 170;
     const scaleY = Math.max(0.85, Math.min(1.22, heightIn / 70));
     const girth = Math.max(0.85, Math.min(1.55, Math.pow(weightLb / 170, 0.38)));
 
     const g = new THREE.Group();
-
-    // --- Legs (two cylinders) ---
     const pantsMat = new THREE.MeshLambertMaterial({ color: secondary });
-    const legH = 1.6;
-    const legR = 0.18 * girth;
-    for (const dz of [-0.22, 0.22]) {
-      const leg = new THREE.Mesh(new THREE.CylinderGeometry(legR, legR * 0.88, legH, 8), pantsMat);
-      leg.position.set(0, legH / 2, dz * girth);
-      leg.castShadow = true;
-      g.add(leg);
+
+    // --- Feet / cleats ---
+    const footL = 0.42, footW = 0.22, footH = 0.1;
+    const hipZ = 0.22 * girth;
+    for (const dz of [-hipZ, hipZ]) {
+      const foot = new THREE.Mesh(new THREE.BoxGeometry(footL, footH, footW), cleatMat);
+      foot.position.set(0.06, footH / 2, dz);
+      foot.castShadow = true;
+      g.add(foot);
     }
 
-    // --- Pelvis / hip pad ---
-    const pelvis = new THREE.Mesh(new THREE.BoxGeometry(0.95 * girth, 0.3, 0.55 * girth), pantsMat);
-    pelvis.position.y = legH + 0.15;
+    // --- Legs: ankle, calf, knee, thigh (tapered) ---
+    const ankleY = footH;
+    const calfH = 0.68, thighH = 0.84;
+    const kneeY = ankleY + calfH;
+    const thighTopY = kneeY + thighH;
+    const calfR = 0.17 * girth;
+    const thighRTop = 0.22 * girth, thighRBot = 0.19 * girth;
+    for (const dz of [-hipZ, hipZ]) {
+      const sock = new THREE.Mesh(
+        new THREE.CylinderGeometry(calfR * 0.95, calfR * 0.9, 0.22, 10),
+        sockMat
+      );
+      sock.position.set(0, ankleY + 0.11, dz);
+      sock.castShadow = true;
+      g.add(sock);
+      const calf = new THREE.Mesh(
+        new THREE.CylinderGeometry(calfR * 1.05, calfR * 0.95, calfH - 0.22, 10),
+        skinMat
+      );
+      calf.position.set(0, ankleY + 0.22 + (calfH - 0.22) / 2, dz);
+      calf.castShadow = true;
+      g.add(calf);
+      const knee = new THREE.Mesh(new THREE.SphereGeometry(calfR * 1.1, 10, 8), pantsMat);
+      knee.position.set(0, kneeY, dz);
+      knee.castShadow = true;
+      g.add(knee);
+      const thigh = new THREE.Mesh(
+        new THREE.CylinderGeometry(thighRTop, thighRBot, thighH, 10),
+        pantsMat
+      );
+      thigh.position.set(0, kneeY + thighH / 2, dz);
+      thigh.castShadow = true;
+      g.add(thigh);
+    }
+
+    // --- Pelvis / hip pad + belt ---
+    const pelvisH = 0.3;
+    const pelvis = new THREE.Mesh(new THREE.BoxGeometry(0.95 * girth, pelvisH, 0.55 * girth), pantsMat);
+    pelvis.position.y = thighTopY + pelvisH / 2;
     pelvis.castShadow = true;
     g.add(pelvis);
+    const belt = new THREE.Mesh(
+      new THREE.BoxGeometry(0.98 * girth, 0.08, 0.57 * girth),
+      beltMat
+    );
+    belt.position.y = thighTopY + pelvisH + 0.04;
+    g.add(belt);
 
-    // --- Torso (jersey) with number/name textures on front/back ---
-    const torsoW = 1.0 * girth;
-    const torsoH = 1.05;
-    const torsoD = 0.55 * girth;
-    const torsoY = legH + 0.3 + torsoH / 2;
+    // --- Torso (jersey) with taper toward waist and number/name textures ---
+    const torsoH = 1.0;
+    const torsoBottomY = thighTopY + pelvisH + 0.08;
+    const torsoY = torsoBottomY + torsoH / 2;
+    const torsoTopW = 1.08 * girth, torsoBotW = 0.92 * girth;
+    const torsoTopD = 0.58 * girth, torsoBotD = 0.52 * girth;
     const frontTex = jerseyFrontTexture(player.number, primaryHex, secondaryHex);
     const lastName = (player.name || '').split(' ').slice(-1)[0];
     const backTex = jerseyBackTexture(player.number, lastName, primaryHex, secondaryHex);
+    // Use a buffer geometry box then warp vertices for taper. Simplest route: a
+    // shallow trapezoidal prism using BoxGeometry + per-vertex scale.
+    const torsoGeo = new THREE.BoxGeometry(1, torsoH, 1, 1, 1, 1);
+    const tp = torsoGeo.attributes.position;
+    for (let i = 0; i < tp.count; i++) {
+      const y = tp.getY(i);
+      const fracTop = (y + torsoH / 2) / torsoH; // 0 at bottom, 1 at top
+      const w = torsoBotW + (torsoTopW - torsoBotW) * fracTop;
+      const d = torsoBotD + (torsoTopD - torsoBotD) * fracTop;
+      tp.setX(i, tp.getX(i) * w);
+      tp.setZ(i, tp.getZ(i) * d);
+    }
+    torsoGeo.computeVertexNormals();
     const torsoMats = [
       new THREE.MeshLambertMaterial({ color: primary }),
       new THREE.MeshLambertMaterial({ color: primary }),
       new THREE.MeshLambertMaterial({ color: primary }),
       new THREE.MeshLambertMaterial({ color: primary }),
-      new THREE.MeshLambertMaterial({ map: frontTex }),   // +Z front
-      new THREE.MeshLambertMaterial({ map: backTex }),    // -Z back
+      new THREE.MeshLambertMaterial({ map: frontTex }),
+      new THREE.MeshLambertMaterial({ map: backTex }),
     ];
-    const torso = new THREE.Mesh(new THREE.BoxGeometry(torsoW, torsoH, torsoD), torsoMats);
+    const torso = new THREE.Mesh(torsoGeo, torsoMats);
     torso.position.y = torsoY;
     torso.castShadow = true;
     g.add(torso);
 
-    // --- Shoulder pads (wider than torso, beveled top) ---
-    const padsY = torsoY + torsoH / 2 + 0.08;
+    // --- Shoulder pads: wider, beveled top with slight slope to the sides. ---
+    const padsY = torsoY + torsoH / 2 + 0.1;
     const pads = new THREE.Mesh(
-      new THREE.BoxGeometry(1.55 * girth, 0.32, torsoD + 0.18),
+      new THREE.BoxGeometry(1.62 * girth, 0.3, torsoTopD + 0.2),
       new THREE.MeshLambertMaterial({ color: primary })
     );
     pads.position.y = padsY;
     pads.castShadow = true;
     g.add(pads);
-
-    // --- Arms (upper tapered cylinders) ---
-    const armMat = new THREE.MeshLambertMaterial({ color: primary });
-    const foreMat = skinMat;
-    const armLen = 0.65;
-    const foreLen = 0.55;
-    const armR = 0.14 * girth;
+    // Shoulder caps (dome over each shoulder).
     for (const sgn of [-1, 1]) {
-      const shoulderX = sgn * (0.55 * girth + armR * 0.9);
-      const upper = new THREE.Mesh(new THREE.CylinderGeometry(armR, armR * 0.88, armLen, 8), armMat);
-      upper.position.set(shoulderX, padsY - 0.1 - armLen / 2, 0);
-      upper.castShadow = true;
-      g.add(upper);
-      const fore = new THREE.Mesh(new THREE.CylinderGeometry(armR * 0.82, armR * 0.7, foreLen, 8), foreMat);
-      fore.position.set(shoulderX, padsY - 0.1 - armLen - foreLen / 2, 0);
-      fore.castShadow = true;
-      g.add(fore);
+      const cap = new THREE.Mesh(
+        new THREE.SphereGeometry(0.28 * girth, 10, 8, 0, Math.PI * 2, 0, Math.PI / 2),
+        new THREE.MeshLambertMaterial({ color: primary })
+      );
+      cap.position.set(sgn * 0.72 * girth, padsY + 0.05, 0);
+      cap.castShadow = true;
+      g.add(cap);
     }
 
-    // --- Neck ---
-    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.14, 0.18, 8), skinMat);
-    neck.position.y = padsY + 0.2;
-    g.add(neck);
+    // --- Arms: sleeve + bicep + elbow + forearm + glove ---
+    const armMat = new THREE.MeshLambertMaterial({ color: primary });
+    const upperLen = 0.6;
+    const foreLen = 0.55;
+    const armR = 0.135 * girth;
+    for (const sgn of [-1, 1]) {
+      const shoulderX = sgn * (0.58 * girth + armR * 0.8);
+      const shoulderY = padsY - 0.08;
+      const sleeve = new THREE.Mesh(
+        new THREE.CylinderGeometry(armR * 1.08, armR * 0.95, upperLen * 0.45, 10),
+        armMat
+      );
+      sleeve.position.set(shoulderX, shoulderY - upperLen * 0.22, 0);
+      sleeve.castShadow = true;
+      g.add(sleeve);
+      const bicep = new THREE.Mesh(
+        new THREE.CylinderGeometry(armR * 0.95, armR * 0.82, upperLen * 0.6, 10),
+        skinMat
+      );
+      bicep.position.set(shoulderX, shoulderY - upperLen * 0.75, 0);
+      bicep.castShadow = true;
+      g.add(bicep);
+      const elbow = new THREE.Mesh(new THREE.SphereGeometry(armR * 0.92, 8, 6), skinMat);
+      elbow.position.set(shoulderX, shoulderY - upperLen - 0.02, 0);
+      g.add(elbow);
+      const fore = new THREE.Mesh(
+        new THREE.CylinderGeometry(armR * 0.82, armR * 0.66, foreLen, 10),
+        skinMat
+      );
+      fore.position.set(shoulderX, shoulderY - upperLen - 0.02 - foreLen / 2, 0);
+      fore.castShadow = true;
+      g.add(fore);
+      const glove = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.28, 0.2), gloveMat);
+      glove.position.set(shoulderX, shoulderY - upperLen - foreLen - 0.14, 0);
+      glove.castShadow = true;
+      g.add(glove);
+    }
 
-    // --- Helmet + facemask ---
-    const helmetY = padsY + 0.55;
-    const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.38, 14, 12), new THREE.MeshLambertMaterial({ color: primary }));
+    // --- Neck + head (skin under helmet) ---
+    const neckY = padsY + 0.16;
+    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.13, 0.16, 10), skinMat);
+    neck.position.y = neckY;
+    g.add(neck);
+    const headY = neckY + 0.22;
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.22, 12, 10), skinMat);
+    head.position.y = headY;
+    head.scale.set(0.95, 1.02, 1.02);
+    g.add(head);
+
+    // --- Helmet: ellipsoid shell with chin strap + earhole + facemask ---
+    const helmetY = headY + 0.11;
+    const helmetMat = new THREE.MeshLambertMaterial({ color: primary });
+    const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.36, 16, 14), helmetMat);
     helmet.position.y = helmetY;
-    helmet.scale.set(1.05, 0.95, 1.18);
+    helmet.scale.set(1.08, 1.0, 1.18);
     helmet.castShadow = true;
     g.add(helmet);
+    // Back lip / bumper
+    const bumper = new THREE.Mesh(
+      new THREE.TorusGeometry(0.34, 0.04, 6, 16),
+      new THREE.MeshLambertMaterial({ color: 0x101010 })
+    );
+    bumper.rotation.x = Math.PI / 2;
+    bumper.position.set(0, helmetY - 0.3, 0);
+    bumper.scale.set(1.12, 1.2, 1);
+    g.add(bumper);
+    // Ear holes (dark dots on sides)
+    for (const sgn of [-1, 1]) {
+      const ear = new THREE.Mesh(
+        new THREE.CircleGeometry(0.06, 10),
+        new THREE.MeshBasicMaterial({ color: 0x000000 })
+      );
+      ear.rotation.y = sgn * Math.PI / 2;
+      ear.position.set(sgn * 0.4, helmetY - 0.02, 0);
+      g.add(ear);
+    }
+    // Facemask
     const mask = new THREE.Mesh(
-      new THREE.TorusGeometry(0.22, 0.035, 6, 12, Math.PI),
+      new THREE.TorusGeometry(0.22, 0.035, 6, 14, Math.PI),
       new THREE.MeshLambertMaterial({ color: 0x888888 })
     );
-    mask.position.set(0, helmetY - 0.08, 0.36);
+    mask.position.set(0, helmetY - 0.1, 0.36);
     mask.rotation.x = Math.PI / 2;
     g.add(mask);
+    // Chin strap
+    const strap = new THREE.Mesh(
+      new THREE.TorusGeometry(0.2, 0.018, 4, 10, Math.PI * 0.9),
+      new THREE.MeshLambertMaterial({ color: 0xffffff })
+    );
+    strap.position.set(0, helmetY - 0.28, 0.12);
+    strap.rotation.x = Math.PI / 2.1;
+    g.add(strap);
 
     // Apply overall height scaling to the whole figure (feet remain on ground).
     g.scale.y = scaleY;
