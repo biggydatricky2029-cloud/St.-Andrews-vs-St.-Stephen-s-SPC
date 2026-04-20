@@ -210,5 +210,23 @@ window.FB = window.FB || {};
         new THREE.MeshLambertMaterial({ color: Math.random() > 0.5 ? 0xffd700 : 0xffffff }));
       dot.position.set(Math.cos(ang) * 68, 5 + Math.random() * 2, Math.sin(ang) * 38); g.add(dot);
     }
+    // "BECK STADIUM" sign mounted above the end-zone stands.
+    const signCanvas = document.createElement('canvas');
+    signCanvas.width = 1024; signCanvas.height = 192;
+    const sctx = signCanvas.getContext('2d');
+    sctx.fillStyle = '#0b1a33'; sctx.fillRect(0, 0, 1024, 192);
+    sctx.strokeStyle = '#ffd700'; sctx.lineWidth = 8;
+    sctx.strokeRect(8, 8, 1008, 176);
+    sctx.fillStyle = '#ffd700';
+    sctx.font = 'bold 110px system-ui, sans-serif';
+    sctx.textAlign = 'center'; sctx.textBaseline = 'middle';
+    sctx.fillText('BECK STADIUM', 512, 96);
+    const signTex = new THREE.CanvasTexture(signCanvas);
+    const signMat = new THREE.MeshBasicMaterial({ map: signTex, transparent: false });
+    const signGeo = new THREE.PlaneGeometry(48, 9);
+    const sign1 = new THREE.Mesh(signGeo, signMat);
+    sign1.position.set(0, 16, -44); g.add(sign1);
+    const sign2 = new THREE.Mesh(signGeo, signMat);
+    sign2.position.set(0, 16, 44); sign2.rotation.y = Math.PI; g.add(sign2);
   }
 })(window.FB);

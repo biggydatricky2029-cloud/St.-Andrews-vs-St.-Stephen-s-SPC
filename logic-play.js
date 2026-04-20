@@ -45,7 +45,7 @@
     FB.spawnOffense(s.possession, losX);
     FB.spawnDefense(defTeam, losX);
     FB.attachBallTo(FB.qb);
-    FB.ball.position.copy(FB.qb.mesh.position).add(new THREE.Vector3(0, 2.2, 0.3));
+    FB.ball.position.copy(FB.qb.mesh.position).add(new THREE.Vector3(0, FB.qb.carryY || 2.2, 0.3));
 
     // Expand routes onto each offense entity (relative to snap position).
     applyOffensiveRoutes(off);

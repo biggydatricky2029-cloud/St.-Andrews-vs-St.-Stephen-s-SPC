@@ -63,7 +63,7 @@
     }
 
     // Ball follows carrier.
-    FB.ball.position.copy(bc.mesh.position).add(new THREE.Vector3(0, 2.2, 0.3));
+    FB.ball.position.copy(bc.mesh.position).add(new THREE.Vector3(0, bc.carryY || 2.2, 0.3));
   };
 
   // Non-ball-carrier offense: receivers run routes, blockers engage.

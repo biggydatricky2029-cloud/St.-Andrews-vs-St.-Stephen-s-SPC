@@ -127,19 +127,29 @@
           if (ae !== be) return be - ae;
           return (b.overall || 0) - (a.overall || 0);
         });
+        const curQuarter = (FB.state && FB.state.quarter) || 1;
         for (const p of sorted) {
           const btn = document.createElement('button');
-          btn.className = 'sub-cand' + (p.number === cur ? ' active' : '');
+          const locked = Array.isArray(p._quarterRestrict) && p._quarterRestrict.length > 0;
+          const lockedNow = locked && !p._quarterRestrict.includes(curQuarter);
+          btn.className = 'sub-cand' + (p.number === cur ? ' active' : '') + (lockedNow ? ' locked' : '');
           const eligible = p.positions.some(pp => eligiblePos.includes(pp));
           const last = p.name.split(' ').slice(-1)[0];
+          const lockTag = lockedNow ? ' <span class="sc-lock">Q' + p._quarterRestrict.join('/Q') + '</span>' : '';
           btn.innerHTML = '<span class="sc-num">#' + p.number + '</span>'
-            + '<span class="sc-name">' + escapeHtml(last) + (eligible ? '' : '<span class="sc-alt">*</span>') + '</span>'
+            + '<span class="sc-name">' + escapeHtml(last) + (eligible ? '' : '<span class="sc-alt">*</span>') + lockTag + '</span>'
             + '<span class="sc-ovr">OVR ' + p.overall + '</span>';
-          btn.title = p.name + ' — positions: ' + p.positions.join('/') + ' — OVR ' + p.overall;
-          btn.addEventListener('click', () => {
-            lineup[g.side][slot] = p.number;
-            renderSubsView(teamKey);
-          });
+          const displayName = p.displayName || p.name;
+          btn.title = displayName + ' — positions: ' + p.positions.join('/') + ' — OVR ' + p.overall
+            + (locked ? ' — available only in Q' + p._quarterRestrict.join('/Q') : '');
+          if (lockedNow) {
+            btn.disabled = true;
+          } else {
+            btn.addEventListener('click', () => {
+              lineup[g.side][slot] = p.number;
+              renderSubsView(teamKey);
+            });
+          }
           cands.appendChild(btn);
         }
         card.appendChild(cands);
@@ -149,7 +159,7 @@
     const note = document.createElement('div');
     note.className = 'pg-sub';
     note.style.marginTop = '8px';
-    note.textContent = 'Tip: any player can be subbed into any slot. * = not a listed position for this slot (rating may not reflect fit).';
+    note.textContent = 'Tip: any player can be subbed into any slot. * = not a listed position for this slot (rating may not reflect fit). Greyed-out players are quarter-locked — e.g. Edward Cantrell unlocks in Q3/Q4.';
     list.appendChild(note);
   }
 
@@ -161,8 +171,11 @@
       html += '<h3>' + escapeHtml(t.teamName) + '</h3>';
       const rows = [...t.players].sort((a, b) => (b.overall || 0) - (a.overall || 0));
       for (const p of rows) {
+        const displayName = p.displayName || p.name;
+        const lockTag = Array.isArray(p._quarterRestrict) && p._quarterRestrict.length > 0
+          ? ' <span class="pg-lock">Q' + p._quarterRestrict.join('/Q') + '</span>' : '';
         html += '<div class="pg-row"><div class="pg-left"><span class="pg-num">#' + p.number + '</span>'
-          + '<span class="pg-name">' + escapeHtml(p.name) + '</span>'
+          + '<span class="pg-name">' + escapeHtml(displayName) + lockTag + '</span>'
           + '<span class="pg-slot">' + p.positions.join('/') + '</span></div>'
           + '<span class="pg-ovr">' + (p.overall || '—') + '</span></div>';
       }

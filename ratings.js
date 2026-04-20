@@ -189,9 +189,12 @@
     const gp = s.gp || 0;
     const ratings = {};
 
-    // Honest override: a per-player fixed rating from the roster (e.g. walk-ons).
-    if (typeof s._forceOverall === 'number') {
-      const forced = Math.max(50, Math.min(99, Math.round(s._forceOverall)));
+    // Honest override: a per-player fixed rating from the roster (e.g. walk-ons, secret weapon).
+    const forcedSrc = typeof player._forceOverall === 'number' ? player._forceOverall
+                    : typeof s._forceOverall === 'number' ? s._forceOverall
+                    : null;
+    if (forcedSrc !== null) {
+      const forced = Math.max(50, Math.min(100, Math.round(forcedSrc)));
       for (const pos of player.positions) ratings[pos] = forced;
       player.ratings = ratings;
       player.overall = forced;
@@ -274,9 +277,13 @@
     { slot: 'Gunner2', pos: ['CB', 'WR', 'S', 'FS', 'SS'] },
   ];
 
+  function isQuarterLocked(p) {
+    return Array.isArray(p._quarterRestrict) && p._quarterRestrict.length > 0;
+  }
+
   function bestFor(slot, roster, used, teamContext) {
     if (slot.isReturner) {
-      return [...roster].filter((p) => !used.has(p.number))
+      return [...roster].filter((p) => !used.has(p.number) && !isQuarterLocked(p))
         .sort((a, b) => {
           const ar = (a.returnerRating || 0) * 10 + (a.overall || 0);
           const br = (b.returnerRating || 0) * 10 + (b.overall || 0);
@@ -285,6 +292,7 @@
     }
     const candidates = roster.filter((p) => {
       if (used.has(p.number)) return false;
+      if (isQuarterLocked(p)) return false;
       return p.positions.some((pp) => slot.pos.includes(pp));
     });
     candidates.sort((a, b) => {

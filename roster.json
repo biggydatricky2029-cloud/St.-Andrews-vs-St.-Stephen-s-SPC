@@ -10,7 +10,8 @@
       "Will Reilly (#9) FG% set to 80% per user instruction (assumed: fieldGoals, xp).",
       "Caleb Herd (#14) FG% set to 80% per user instruction (assumed: fieldGoals, xp).",
       "Placeholder players (#16 Berry, #61 Zubedy, #77 Kramer) have no in-season stats — rated by class + size.",
-      "Blake Staigerwald (#3) overall pinned to 50 per user instruction (_forceOverall)."
+      "Blake Staigerwald (#33) overall pinned to 50 per user instruction (_forceOverall).",
+      "Edward Cantrell 'The Secret Weapon' (#99) pinned to 100 overall; _quarterRestrict:[3,4] limits him to 3rd/4th quarter substitutions only."
     ],
     "players": [
       {"number":0,"name":"Andrew Childers","class":"Jr","positions":["TE","LB"],"height":"6'0\"","weight":190,"stats":{"gp":5,"receptions":1,"receivingYards":10,"tackles":24,"soloTackles":7,"assistTackles":17,"tfl":3,"hurries":3,"forcedFumbles":1,"pancakes":1}},
@@ -55,7 +56,8 @@
       {"number":70,"name":"Graves Wood","class":"Sr","positions":["G","NG"],"height":"6'1\"","weight":230,"stats":{"gp":3,"tackles":3,"assistTackles":3}},
       {"number":74,"name":"Anton Boerema","class":"So","positions":["DE","T"],"height":"6'4\"","weight":210,"stats":{"gp":9,"tackles":10,"soloTackles":2,"assistTackles":8,"tfl":2,"sacks":0.5,"hurries":2}},
       {"number":77,"name":"Cash Kramer","class":"So","positions":["OL","DT"],"height":"6'3\"","weight":250,"stats":{"gp":0,"_placeholder":true,"_note":"Size bonus — 250lb So interior"}},
-      {"number":78,"name":"Parker Henderson","class":"So","positions":["T","DE"],"height":"6'3\"","weight":205,"stats":{"gp":10,"tackles":8,"assistTackles":8,"hurries":1}}
+      {"number":78,"name":"Parker Henderson","class":"So","positions":["T","DE"],"height":"6'3\"","weight":205,"stats":{"gp":10,"tackles":8,"assistTackles":8,"hurries":1}},
+      {"number":99,"name":"Edward Cantrell","nickname":"The Secret Weapon","displayName":"Edward Cantrell 'The Secret Weapon'","class":"Sr","positions":["LB","RB"],"height":"6'2\"","weight":225,"_forceOverall":100,"_quarterRestrict":[3,4],"stats":{"gp":0,"_placeholder":true,"_note":"Overall pinned to 100; substitutions restricted to Q3 and Q4 per user instruction."}}
     ]
   },
   "spartans": {

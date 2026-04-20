@@ -147,6 +147,9 @@ html, body {
 .sub-cand .sc-ovr { background: #223;
   color: var(--accent); font-weight: 800; font-size: 10px; padding: 2px 4px; border-radius: 3px; letter-spacing: 0.3px; }
 .sub-cand.active .sc-ovr { background: var(--accent); color: #001624; }
+.sub-cand.locked { opacity: 0.35; filter: grayscale(0.6); cursor: not-allowed; }
+.sub-cand .sc-lock { background: #4a2a00; color: #ffd27a; font-weight: 700; font-size: 9px; padding: 1px 4px; border-radius: 3px; margin-left: 4px; letter-spacing: 0.3px; }
+.pg-lock { background: #4a2a00; color: #ffd27a; font-weight: 700; font-size: 10px; padding: 1px 5px; border-radius: 4px; margin-left: 6px; letter-spacing: 0.3px; }
 
 .roster-view { font-size: 12px; max-height: 60vh; overflow-y: auto; }
 .roster-view h3 { margin: 8px 0 4px; font-size: 13px; }

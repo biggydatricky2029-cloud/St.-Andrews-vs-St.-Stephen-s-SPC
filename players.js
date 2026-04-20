@@ -47,18 +47,52 @@
     return new THREE.CanvasTexture(out);
   }
 
+  function parseHeightInches(h) {
+    if (!h) return 0;
+    const m = /^(\d+)'(\d+)"?$/.exec(String(h).trim());
+    if (!m) return 0;
+    return parseInt(m[1], 10) * 12 + parseInt(m[2], 10);
+  }
+
   function createPlayerMesh(player, teamKey) {
     const team = FB.teams[teamKey];
     const primary = new THREE.Color(team.primaryColor);
     const secondary = new THREE.Color(team.secondaryColor);
-    const g = new THREE.Group();
-
-    const pants = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.4, 0.6),
-      new THREE.MeshLambertMaterial({ color: secondary }));
-    pants.position.y = 0.7; pants.castShadow = true; g.add(pants);
-
     const primaryHex = '#' + primary.getHexString();
     const secondaryHex = '#' + secondary.getHexString();
+    const skinMat = new THREE.MeshLambertMaterial({ color: 0xc48a66 }); // generic skin tone
+
+    // --- Proportional scaling from real listed height/weight ---
+    // Baseline: 5'10" (70 in) and 170 lbs → scale factors of 1.0.
+    const heightIn = parseHeightInches(player.height) || 70;
+    const weightLb = (player.weight && player.weight > 0) ? player.weight : 170;
+    const scaleY = Math.max(0.85, Math.min(1.22, heightIn / 70));
+    const girth = Math.max(0.85, Math.min(1.55, Math.pow(weightLb / 170, 0.38)));
+
+    const g = new THREE.Group();
+
+    // --- Legs (two cylinders) ---
+    const pantsMat = new THREE.MeshLambertMaterial({ color: secondary });
+    const legH = 1.6;
+    const legR = 0.18 * girth;
+    for (const dz of [-0.22, 0.22]) {
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(legR, legR * 0.88, legH, 8), pantsMat);
+      leg.position.set(0, legH / 2, dz * girth);
+      leg.castShadow = true;
+      g.add(leg);
+    }
+
+    // --- Pelvis / hip pad ---
+    const pelvis = new THREE.Mesh(new THREE.BoxGeometry(0.95 * girth, 0.3, 0.55 * girth), pantsMat);
+    pelvis.position.y = legH + 0.15;
+    pelvis.castShadow = true;
+    g.add(pelvis);
+
+    // --- Torso (jersey) with number/name textures on front/back ---
+    const torsoW = 1.0 * girth;
+    const torsoH = 1.05;
+    const torsoD = 0.55 * girth;
+    const torsoY = legH + 0.3 + torsoH / 2;
     const frontTex = jerseyFrontTexture(player.number, primaryHex, secondaryHex);
     const lastName = (player.name || '').split(' ').slice(-1)[0];
     const backTex = jerseyBackTexture(player.number, lastName, primaryHex, secondaryHex);
@@ -70,31 +104,82 @@
       new THREE.MeshLambertMaterial({ map: frontTex }),   // +Z front
       new THREE.MeshLambertMaterial({ map: backTex }),    // -Z back
     ];
-    const torso = new THREE.Mesh(new THREE.BoxGeometry(1.1, 1.2, 0.7), torsoMats);
-    torso.position.y = 2.0; torso.castShadow = true; g.add(torso);
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(torsoW, torsoH, torsoD), torsoMats);
+    torso.position.y = torsoY;
+    torso.castShadow = true;
+    g.add(torso);
 
-    const pads = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.35, 0.9),
-      new THREE.MeshLambertMaterial({ color: primary }));
-    pads.position.y = 2.6; pads.castShadow = true; g.add(pads);
+    // --- Shoulder pads (wider than torso, beveled top) ---
+    const padsY = torsoY + torsoH / 2 + 0.08;
+    const pads = new THREE.Mesh(
+      new THREE.BoxGeometry(1.55 * girth, 0.32, torsoD + 0.18),
+      new THREE.MeshLambertMaterial({ color: primary })
+    );
+    pads.position.y = padsY;
+    pads.castShadow = true;
+    g.add(pads);
 
-    const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.42, 12, 10),
-      new THREE.MeshLambertMaterial({ color: primary }));
-    helmet.position.y = 3.1; helmet.scale.set(1.0, 0.95, 1.15); helmet.castShadow = true; g.add(helmet);
-    const mask = new THREE.Mesh(new THREE.TorusGeometry(0.25, 0.04, 6, 12, Math.PI),
-      new THREE.MeshLambertMaterial({ color: 0x999999 }));
-    mask.position.set(0, 3.0, 0.38); mask.rotation.x = Math.PI / 2; g.add(mask);
+    // --- Arms (upper tapered cylinders) ---
+    const armMat = new THREE.MeshLambertMaterial({ color: primary });
+    const foreMat = skinMat;
+    const armLen = 0.65;
+    const foreLen = 0.55;
+    const armR = 0.14 * girth;
+    for (const sgn of [-1, 1]) {
+      const shoulderX = sgn * (0.55 * girth + armR * 0.9);
+      const upper = new THREE.Mesh(new THREE.CylinderGeometry(armR, armR * 0.88, armLen, 8), armMat);
+      upper.position.set(shoulderX, padsY - 0.1 - armLen / 2, 0);
+      upper.castShadow = true;
+      g.add(upper);
+      const fore = new THREE.Mesh(new THREE.CylinderGeometry(armR * 0.82, armR * 0.7, foreLen, 8), foreMat);
+      fore.position.set(shoulderX, padsY - 0.1 - armLen - foreLen / 2, 0);
+      fore.castShadow = true;
+      g.add(fore);
+    }
 
+    // --- Neck ---
+    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.14, 0.18, 8), skinMat);
+    neck.position.y = padsY + 0.2;
+    g.add(neck);
+
+    // --- Helmet + facemask ---
+    const helmetY = padsY + 0.55;
+    const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.38, 14, 12), new THREE.MeshLambertMaterial({ color: primary }));
+    helmet.position.y = helmetY;
+    helmet.scale.set(1.05, 0.95, 1.18);
+    helmet.castShadow = true;
+    g.add(helmet);
+    const mask = new THREE.Mesh(
+      new THREE.TorusGeometry(0.22, 0.035, 6, 12, Math.PI),
+      new THREE.MeshLambertMaterial({ color: 0x888888 })
+    );
+    mask.position.set(0, helmetY - 0.08, 0.36);
+    mask.rotation.x = Math.PI / 2;
+    g.add(mask);
+
+    // Apply overall height scaling to the whole figure (feet remain on ground).
+    g.scale.y = scaleY;
+
+    // --- Derived attributes: weight + height shape speed/accel subtly ---
     const rating = player.overall || 60;
-    const speed = 4 + rating * 0.06;
-    const accel = 8 + rating * 0.12;
+    const weightPenalty = Math.max(0.82, Math.min(1.10, 170 / weightLb));
+    const heightBonus = Math.max(0.95, Math.min(1.08, heightIn / 70));
+    const speed = (4 + rating * 0.06) * weightPenalty;
+    const accel = (8 + rating * 0.12) * weightPenalty;
+
+    // Where the ball sits when this player carries it (scales with the player's height).
+    const carryY = (torsoY + 0.15) * scaleY;
+
     return {
       mesh: g, player, team: teamKey, role: null,
       baseSpeed: speed, accel,
       stamina: 100, rating,
+      heightIn, weightLb,
       vel: new THREE.Vector3(),
       target: new THREE.Vector3(),
       assignment: null, isDown: false, route: null,
       jukeCooldown: 0,
+      carryY,
     };
   }
 
