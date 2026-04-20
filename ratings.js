@@ -189,6 +189,18 @@
     const gp = s.gp || 0;
     const ratings = {};
 
+    // Honest override: a per-player fixed rating from the roster (e.g. walk-ons).
+    if (typeof s._forceOverall === 'number') {
+      const forced = Math.max(50, Math.min(99, Math.round(s._forceOverall)));
+      for (const pos of player.positions) ratings[pos] = forced;
+      player.ratings = ratings;
+      player.overall = forced;
+      player.isPlaceholder = !!s._placeholder;
+      player.isForced = true;
+      player.returnerRating = 0;
+      return forced;
+    }
+
     if (s._placeholder || gp === 0) {
       const rPh = placeholderRating(player);
       for (const pos of player.positions) ratings[pos] = rPh;
@@ -201,12 +213,11 @@
 
     for (const pos of player.positions) {
       let raw = rateByPosition(pos, player, s, gp, teamContext);
-      // Extrapolation cap: compute raw w/ real totals (no scaling), use as floor+25 ceiling for extrapolated.
       if (gp > 0 && gp < 6) {
-        const rawReal = rateByPosition(pos, player, s, 10, teamContext); // gp>=6 path = no scaling
+        const rawReal = rateByPosition(pos, player, s, 10, teamContext);
         raw = Math.min(raw, rawReal + 25);
       }
-      ratings[pos] = CLAMP(Math.round(raw), 40, 99);
+      ratings[pos] = CLAMP(Math.round(raw), 50, 99);
     }
 
     player.ratings = ratings;
@@ -215,7 +226,6 @@
     player.isPlaceholder = false;
     player.isSmallSample = gp > 0 && gp < 5;
 
-    // Two-way flag: top 2 sub-ratings both >=65 on opposite sides.
     if (subList.length >= 2 && subList[0][1] >= 65 && subList[1][1] >= 65) {
       const s1 = sideOf(subList[0][0]), s2 = sideOf(subList[1][0]);
       if (s1 !== s2 && s1 !== 'ST' && s2 !== 'ST') player.isTwoWay = true;

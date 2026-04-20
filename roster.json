@@ -9,12 +9,14 @@
     "_dataNotes": [
       "Will Reilly (#9) FG% set to 80% per user instruction (assumed: fieldGoals, xp).",
       "Caleb Herd (#14) FG% set to 80% per user instruction (assumed: fieldGoals, xp).",
-      "Placeholder players (#16 Berry, #61 Zubedy, #77 Kramer) have no in-season stats — rated by class + size."
+      "Placeholder players (#16 Berry, #61 Zubedy, #77 Kramer) have no in-season stats — rated by class + size.",
+      "Blake Staigerwald (#3) overall pinned to 50 per user instruction (_forceOverall)."
     ],
     "players": [
       {"number":0,"name":"Andrew Childers","class":"Jr","positions":["TE","LB"],"height":"6'0\"","weight":190,"stats":{"gp":5,"receptions":1,"receivingYards":10,"tackles":24,"soloTackles":7,"assistTackles":17,"tfl":3,"hurries":3,"forcedFumbles":1,"pancakes":1}},
       {"number":1,"name":"Chance Fresch","class":"Fr","positions":["WR","CB"],"height":"5'1\"","weight":110,"stats":{"gp":5,"receptions":3,"receivingYards":15,"kickReturns":9,"kickReturnYards":110,"longKR":27,"fumbles":1}},
       {"number":2,"name":"Marcos Erlanson","class":"Jr","positions":["WR"],"height":"6'0\"","weight":155,"stats":{"gp":6,"receptions":21,"receivingYards":455,"receivingTDs":9,"longRec":57,"kickReturns":1,"kickReturnYards":20,"longKR":20,"puntReturns":3,"puntReturnYards":72,"longPR":39,"tackles":1,"pancakes":1}},
+      {"number":33,"name":"Blake Staigerwald","class":"Fr","positions":["CB","WR"],"height":"5'10\"","weight":145,"stats":{"gp":0,"_placeholder":true,"_forceOverall":50,"_note":"Overall pinned to 50 per user instruction."}},
       {"number":4,"name":"Grayson Walrath","class":"Jr","positions":["RB","CB"],"height":"5'10\"","weight":170,"stats":{"gp":8,"carries":38,"rushingYards":197,"rushingTDs":2,"receptions":2,"receivingYards":9,"tackles":39,"soloTackles":23,"assistTackles":16,"tfl":1,"interceptions":1,"passesDefended":4,"fumbles":1}},
       {"number":5,"name":"Cash Myers","class":"Sr","positions":["FS","WR"],"height":"5'11\"","weight":145,"stats":{"gp":10,"receptions":26,"receivingYards":356,"receivingTDs":4,"longRec":47,"kickReturns":3,"kickReturnYards":27,"longKR":23,"tackles":91,"soloTackles":46,"assistTackles":45,"tfl":3,"interceptions":3,"interceptionReturnYards":50,"fumbleRecoveries":1,"forcedFumbles":1,"pancakes":3}},
       {"number":6,"name":"Roman Lubetzky","class":"Jr","positions":["TE","LB"],"height":"6'0\"","weight":180,"stats":{"gp":9,"receptions":3,"receivingYards":48,"tackles":16,"soloTackles":10,"assistTackles":6,"tfl":3,"sacks":1.0,"forcedFumbles":1,"pancakes":2}},

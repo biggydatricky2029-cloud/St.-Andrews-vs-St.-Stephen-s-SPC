@@ -111,11 +111,14 @@
         card.className = 'sub-slot';
         const cur = lineup[g.side][slot];
         const curP = team.players.find(p => p.number === cur);
-        card.innerHTML = '<div class="sub-slot-hdr"><span class="slot-name">' + slot + '</span>'
-          + '<span>' + (curP ? '#' + curP.number + ' ' + escapeHtml(curP.name) + ' (' + curP.overall + ')' : '—') + '</span></div>';
+        const curOvrHtml = curP ? '<span class="sub-ovr">OVR ' + curP.overall + '</span>' : '';
+        const curNameHtml = curP ? '#' + curP.number + ' ' + escapeHtml(curP.name) : '—';
+        card.innerHTML = '<div class="sub-slot-hdr">'
+          + '<span class="slot-name">' + slot + '</span>'
+          + '<span class="sub-current">' + curNameHtml + ' ' + curOvrHtml + '</span>'
+          + '</div>';
         const cands = document.createElement('div');
         cands.className = 'sub-candidates';
-        // Show ALL players (user requested "any player") — but sort eligible first.
         const slotInfo = [].concat(Ratings.OFFENSE_SLOTS, Ratings.DEFENSE_SLOTS, Ratings.ST_SLOTS).find(x => x.slot === slot);
         const eligiblePos = slotInfo && slotInfo.pos ? slotInfo.pos : [];
         const sorted = [...team.players].sort((a, b) => {
@@ -128,8 +131,11 @@
           const btn = document.createElement('button');
           btn.className = 'sub-cand' + (p.number === cur ? ' active' : '');
           const eligible = p.positions.some(pp => eligiblePos.includes(pp));
-          btn.textContent = '#' + p.number + ' ' + p.name.split(' ').slice(-1)[0] + ' (' + p.overall + ')' + (eligible ? '' : '*');
-          btn.title = p.name + ' — positions: ' + p.positions.join('/');
+          const last = p.name.split(' ').slice(-1)[0];
+          btn.innerHTML = '<span class="sc-num">#' + p.number + '</span>'
+            + '<span class="sc-name">' + escapeHtml(last) + (eligible ? '' : '<span class="sc-alt">*</span>') + '</span>'
+            + '<span class="sc-ovr">OVR ' + p.overall + '</span>';
+          btn.title = p.name + ' — positions: ' + p.positions.join('/') + ' — OVR ' + p.overall;
           btn.addEventListener('click', () => {
             lineup[g.side][slot] = p.number;
             renderSubsView(teamKey);
