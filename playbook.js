@@ -49,6 +49,18 @@
       { id: 'hb_draw', name: 'HB Draw', type: 'run', ballTo: 'RB',
         routes: { RB: [{dx: -2, dz: 0}, {dx: 10, dz: 0}] },
         notes: 'Delayed run, fakes a pass.' },
+      { id: 'iris', name: 'Iris (IZ Right)', type: 'run', ballTo: 'RB', gap: 'inside-right',
+        routes: { RB: [{dx: 3, dz: 1.5}, {dx: 8, dz: 2.5}, {dx: 14, dz: 3}] },
+        notes: 'Inside zone to the right — read the center/right guard double team.' },
+      { id: 'illinois', name: 'Illinois (IZ Left)', type: 'run', ballTo: 'RB', gap: 'inside-left',
+        routes: { RB: [{dx: 3, dz: -1.5}, {dx: 8, dz: -2.5}, {dx: 14, dz: -3}] },
+        notes: 'Inside zone to the left — read the center/left guard double team.' },
+      { id: 'omar', name: 'Omar (OZ Right)', type: 'run', ballTo: 'RB', gap: 'outside-right',
+        routes: { RB: [{dx: 1, dz: 4}, {dx: 5, dz: 9}, {dx: 12, dz: 12}] },
+        notes: 'Outside zone to the right — bounce it wide if the edge seals.' },
+      { id: 'oklahoma', name: 'Oklahoma (OZ Left)', type: 'run', ballTo: 'RB', gap: 'outside-left',
+        routes: { RB: [{dx: 1, dz: -4}, {dx: 5, dz: -9}, {dx: 12, dz: -12}] },
+        notes: 'Outside zone to the left — bounce it wide if the edge seals.' },
       { id: 'quick_slants', name: 'Quick Slants', type: 'pass',
         routes: { WR1: R.slant, WR2: R.slantRight, WR3: R.slant, TE: R.stick, RB: R.flatL },
         notes: 'Fast 3-step drop, slants underneath.' },
@@ -237,8 +249,63 @@
 
   // Pick a random AI play of the given side (for the non-user team).
   FB.pickAIPlay = function (side) {
+    return FB.pickAIPlayAdaptive ? FB.pickAIPlayAdaptive(side) : FB.PLAYBOOK[side][0];
+  };
+
+  // Adaptive picker that reads FB.state.userTendencies to counter the human.
+  // Defense against a pass-heavy user tilts toward zone/dime/prevent; against run, toward base/goal-line/blitz.
+  // Offense against a user who blitzes a lot tilts toward screens/quick passes; against zone, toward verticals.
+  FB.pickAIPlayAdaptive = function (side) {
     const list = FB.PLAYBOOK[side];
-    return list[Math.floor(Math.random() * list.length)];
+    const t = (FB.state && FB.state.userTendencies) || { run: 0, pass: 0, left: 0, right: 0, blitz: 0, zone: 0 };
+    const totalOff = Math.max(1, (t.run || 0) + (t.pass || 0));
+    const runBias = (t.run || 0) / totalOff;   // 0..1
+    const passBias = (t.pass || 0) / totalOff; // 0..1
+    const leftBias = ((t.left || 0) - (t.right || 0)) / Math.max(1, (t.left || 0) + (t.right || 0));
+    const blitzBias = ((t.blitz || 0) - (t.zone || 0)) / Math.max(1, (t.blitz || 0) + (t.zone || 0));
+
+    const scored = list.map((p) => {
+      let s = Math.random() * 0.6; // base randomness
+      if (side === 'defense') {
+        const isRunStopper = /goal|blitz/i.test(p.name) || /mlb_blitz|safety_blitz|goal_line/.test(p.id);
+        const isPassDef = /nickel|dime|cover2|cover3|cover4|prevent|zone_blitz/i.test(p.id);
+        if (isRunStopper) s += runBias * 1.6;
+        if (isPassDef) s += passBias * 1.6;
+        // If user favored a side on runs, prefer blitzes to that side.
+        if (/strong/i.test(p.id) && leftBias < -0.2) s += 0.5;
+        if (/weak/i.test(p.id) && leftBias > 0.2) s += 0.5;
+      } else {
+        const deep = /four_verts|post_corner|play_action_deep/.test(p.id);
+        const quick = /slants|screen|curls|bootleg/.test(p.id);
+        const run = p.type === 'run';
+        if (blitzBias > 0.2) s += quick ? 0.9 : (deep ? 0.4 : 0);
+        if (blitzBias < -0.2) s += deep ? 0.7 : 0;
+        if (blitzBias < 0) s += run ? 0.4 : 0; // if user sits back, AI runs
+      }
+      return { p, s };
+    });
+    scored.sort((a, b) => b.s - a.s);
+    // Top-3 weighted pick for variety.
+    const top = scored.slice(0, Math.min(3, scored.length));
+    return top[Math.floor(Math.random() * top.length)].p;
+  };
+
+  // Call when the user confirms a play so the AI can learn.
+  FB.recordUserPlay = function (side, play) {
+    if (!FB.state) return;
+    const t = FB.state.userTendencies = FB.state.userTendencies
+      || { run: 0, pass: 0, left: 0, right: 0, blitz: 0, zone: 0, recentPlays: [] };
+    if (side === 'offense') {
+      if (play.type === 'run') t.run++;
+      else t.pass++;
+      if (/left|weak/i.test(play.id) || play.gap === 'inside-left' || play.gap === 'outside-left') t.left++;
+      if (/right|strong/i.test(play.id) || play.gap === 'inside-right' || play.gap === 'outside-right') t.right++;
+    } else {
+      if (/blitz|cover0|cover1|goal/i.test(play.id)) t.blitz++;
+      else t.zone++;
+    }
+    t.recentPlays.push(play.id);
+    if (t.recentPlays.length > 8) t.recentPlays.shift();
   };
 
   // Resolve a slot's relative point on the field.

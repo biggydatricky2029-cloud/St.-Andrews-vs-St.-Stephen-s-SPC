@@ -62,7 +62,10 @@
   // Auto-release the power meter when the AI is the kicking team.
   function maybeAutoKick() {
     if (FB.state.possession === FB.userTeam) return;
-    const power = 60 + Math.random() * 25;
+    // Kickoffs: moderate power so the ball doesn't sail past the field.
+    const power = FB.specialMode === 'kickoff'
+      ? 50 + Math.random() * 18
+      : 55 + Math.random() * 22;
     setTimeout(() => FB.onKickRelease(power), 900);
   }
 
@@ -73,8 +76,9 @@
     const dir = FB.forwardDir(FB.state.possession);
     const aimZ = FB.input.joyX * 8;    // steer with joystick
     const kickerRating = FB.kickMeterFrom.rating || 60;
-    const base = FB.specialMode === 'kickoff' ? 32 : FB.specialMode === 'punt' ? 24 : 28;
-    const maxV = base * (0.7 + kickerRating / 150);
+    // Tuned so kickoffs land around the opposing 20-40 instead of past the end zone.
+    const base = FB.specialMode === 'kickoff' ? 20 : FB.specialMode === 'punt' ? 17 : 21;
+    const maxV = base * (0.78 + kickerRating / 220);
     const v = maxV * power;
     const windZ = (FB.state.quarter === 2 || FB.state.quarter === 4) ? (Math.random() - 0.5) * 1.5 : 0;
     FB.ballCarrier = null;
@@ -83,7 +87,7 @@
     FB.ballState.airTime = 0;
     FB.ballState.kind = FB.specialMode;
     FB.ballState.targetPlayer = null;
-    FB.ballState.vel.set(dir * v, v * 0.8, aimZ * power + windZ);
+    FB.ballState.vel.set(dir * v, v * 0.7, aimZ * power + windZ);
     FB.state.log.push(FB.specialMode.toUpperCase() + ' kicked at ' + Math.round(powerPct) + '%');
 
     if (FB.specialMode === 'fg' || FB.specialMode === 'xp') {

@@ -22,13 +22,11 @@
     </div>
     <div class="pg-notes" id="pgNotes"></div>
     <div class="pg-team-pick">
-      <div class="pg-pick-label">Play as:</div>
-      <button class="team-pick-btn active" id="pickHome" data-team="home">
-        <span class="tp-logo tp-home">A</span>Highlanders
+      <div class="pg-pick-label">You play as:</div>
+      <button class="team-pick-btn active locked" id="pickHome" data-team="home" disabled>
+        <span class="tp-logo tp-home">A</span>St. Andrew's Highlanders
       </button>
-      <button class="team-pick-btn" id="pickAway" data-team="away">
-        <span class="tp-logo tp-away">S</span>Spartans
-      </button>
+      <div class="pg-pick-note">St. Stephen's is always the opponent.</div>
     </div>
     <div class="pg-actions">
       <label class="pg-sel">Quarter length:
@@ -40,9 +38,10 @@
       </label>
       <label class="pg-sel">Difficulty:
         <select id="pgDifficulty">
-          <option value="easy">Easy</option>
-          <option value="normal" selected>Normal</option>
-          <option value="hard">Hard</option>
+          <option value="freshman">Freshman — easy</option>
+          <option value="jv">JV — medium</option>
+          <option value="varsity" selected>Varsity — hard (recommended)</option>
+          <option value="allspc">All SPC — extreme</option>
         </select>
       </label>
       <button id="pgStart" class="btn-primary">START GAME</button>
@@ -183,6 +182,7 @@
   <script src="logic-special.js"></script>
   <script src="logic-clock.js"></script>
   <script src="logic-loop.js"></script>
+  <script src="sfx.js"></script>
   <script src="ui.js"></script>
 </body>
 </html>

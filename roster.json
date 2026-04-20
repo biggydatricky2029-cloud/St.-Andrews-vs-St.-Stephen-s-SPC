@@ -3,8 +3,8 @@
     "teamName": "St. Andrew's Highlanders",
     "shortName": "Highlanders",
     "initial": "A",
-    "primaryColor": "#0a2463",
-    "secondaryColor": "#ffffff",
+    "primaryColor": "#ffffff",
+    "secondaryColor": "#6ec6ff",
     "gamesPlayed": 10,
     "_dataNotes": [
       "Will Reilly (#9) FG% set to 80% per user instruction (assumed: fieldGoals, xp).",
@@ -65,7 +65,7 @@
     "shortName": "Spartans",
     "initial": "S",
     "primaryColor": "#b22222",
-    "secondaryColor": "#ffd700",
+    "secondaryColor": "#8a2be2",
     "gamesPlayed": 3,
     "_dataNotes": [
       "Beckett Edel (#32) FG% set to 80% per user instruction.",

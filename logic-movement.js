@@ -119,20 +119,24 @@
         ent.mesh.position.addScaledVector(ent.vel, dt);
         clampField(ent.mesh.position);
       } else {
-        // AI behavior driven by assignment.
+        // AI behavior driven by assignment, with read-and-react to run/pass.
         let target = null;
         const a = ent.assignment;
+        const carrierPast = carrier && FB.ballState.carried
+          && (carrier.mesh.position.x - losX) * dir > 0.5;
+        const isRunPlay = FB.state.playType === 'run' || carrierPast;
         if (!a || a.type === 'rush' || a.type === 'blitz') {
-          // Go after the QB/ball carrier.
           target = carrier && FB.ballState.carried ? carrier.mesh.position.clone()
                  : FB.ball ? FB.ball.position.clone() : new THREE.Vector3(losX, 0, ent.mesh.position.z);
         } else if (a.type === 'zone') {
           const zx = losX + (a.depth || 0) * dir;
           const zz = a.lateral || 0;
           target = new THREE.Vector3(zx, 0, zz);
-          // If ball is near or in zone, pursue.
           const ballPos = FB.ball ? FB.ball.position : null;
-          if (ballPos && Math.hypot(ballPos.x - zx, ballPos.z - zz) < 8) {
+          // Defenders read the run: LBs/SS crash the carrier hard.
+          const isBacker = ent.role === 'MLB' || ent.role === 'WLB' || ent.role === 'SLB' || ent.role === 'SS';
+          const runTrigger = isRunPlay && isBacker ? 16 : 8;
+          if (ballPos && Math.hypot(ballPos.x - zx, ballPos.z - zz) < runTrigger) {
             target = carrier && FB.ballState.carried ? carrier.mesh.position.clone() : ballPos.clone();
           }
         } else if (a.type === 'man') {
@@ -140,6 +144,11 @@
           if (mark) target = mark.mesh.position.clone().add(new THREE.Vector3(dir * -1, 0, 0));
           if (carrier && FB.ballState.carried && carrier === mark) target = carrier.mesh.position.clone();
           if (!target) target = new THREE.Vector3(losX, 0, ent.mesh.position.z);
+          // On a run, man defenders near the LOS also collapse on the carrier.
+          if (isRunPlay && carrier && FB.ballState.carried) {
+            const depth = (ent.mesh.position.x - losX) * dir;
+            if (depth < 6) target = carrier.mesh.position.clone();
+          }
         }
         steerToward(ent, target, dt, reaction * 0.95);
       }
@@ -188,6 +197,12 @@
     FB.ball.position.addScaledVector(FB.ballState.vel, dt);
     FB.ball.rotation.x += 8 * dt; FB.ball.rotation.z += 4 * dt;
 
+    // Clamp ball inside the field so kicks that sail long still land in-bounds.
+    const halfLen = FB.const.FIELD_LEN / 2;
+    const halfWid = FB.const.FIELD_WID / 2;
+    if (FB.ball.position.x > halfLen) { FB.ball.position.x = halfLen - 0.5; FB.ball.position.y = 0.3; FB.ballState.inAir = false; if (FB.onBallLanded) FB.onBallLanded(); return; }
+    if (FB.ball.position.x < -halfLen) { FB.ball.position.x = -halfLen + 0.5; FB.ball.position.y = 0.3; FB.ballState.inAir = false; if (FB.onBallLanded) FB.onBallLanded(); return; }
+    if (Math.abs(FB.ball.position.z) > halfWid) { FB.ball.position.z = Math.sign(FB.ball.position.z) * (halfWid - 0.3); FB.ball.position.y = 0.3; FB.ballState.inAir = false; if (FB.onBallLanded) FB.onBallLanded(); return; }
     if (FB.ball.position.y <= 0.3) {
       FB.ball.position.y = 0.3;
       FB.ballState.inAir = false;

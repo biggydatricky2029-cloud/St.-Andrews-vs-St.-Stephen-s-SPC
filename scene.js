@@ -20,11 +20,13 @@ window.FB = window.FB || {};
     playClock: 25,
     timeouts: { home: 3, away: 3 },
     twoMinuteWarned: { half1: false, half2: false },
-    difficulty: 'normal',
+    difficulty: 'varsity',
+    userTendencies: { run: 0, pass: 0, left: 0, right: 0, recentPlays: [] },
     gameStats: { home: {}, away: {} },
     log: [],
   };
-  FB.diffMult = { easy: 0.8, normal: 1.0, hard: 1.15 };
+  FB.diffMult = { freshman: 0.78, jv: 0.95, varsity: 1.15, allspc: 1.32, easy: 0.8, normal: 1.0, hard: 1.15 };
+  FB.diffLabels = { freshman: 'FRESHMAN', jv: 'JV', varsity: 'VARSITY', allspc: 'ALL SPC' };
   FB.teams = { home: null, away: null };
   FB.lineups = { home: null, away: null };
 

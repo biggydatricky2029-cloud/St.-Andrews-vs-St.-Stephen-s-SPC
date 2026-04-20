@@ -260,6 +260,8 @@
     document.getElementById('ppConfirm').addEventListener('click', () => {
       const modal = document.getElementById('playPicker');
       modal.classList.add('hidden');
+      const picked = FB.selectedPlay[ppSide];
+      if (picked && FB.recordUserPlay) FB.recordUserPlay(ppSide, picked);
       if (ppCallback) { const cb = ppCallback; ppCallback = null; cb(); }
     });
     document.getElementById('ppShuffle').addEventListener('click', () => {
@@ -322,9 +324,10 @@
   function startGame() {
     FB.state.quarterLen = parseInt(document.getElementById('pgQuarterLen').value, 10) || 150;
     FB.state.clockSeconds = FB.state.quarterLen;
-    FB.state.difficulty = document.getElementById('pgDifficulty').value || 'normal';
+    FB.state.difficulty = document.getElementById('pgDifficulty').value || 'varsity';
     document.getElementById('preGame').classList.add('hidden');
     document.getElementById('gameHost').classList.remove('hidden');
+    if (FB.sfx && FB.sfx.start) FB.sfx.start();
     FB.initThree();
     FB.buildTeamMeshes('home');
     FB.buildTeamMeshes('away');
