@@ -9,7 +9,7 @@
   FB.ball = null;
   FB.ballState = { carried: true, vel: new THREE.Vector3(), inAir: false, targetPlayer: null, kind: 'run', airTime: 0 };
 
-  function jerseyNumberTexture(num, bg, fg) {
+  function jerseyFrontTexture(num, bg, fg) {
     const c = document.createElement('canvas'); c.width = 128; c.height = 128;
     const ctx = c.getContext('2d');
     ctx.fillStyle = bg; ctx.fillRect(0, 0, c.width, c.height);
@@ -18,6 +18,33 @@
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText(String(num), c.width / 2, c.height / 2);
     return new THREE.CanvasTexture(c);
+  }
+  function jerseyBackTexture(num, lastName, bg, fg) {
+    const c = document.createElement('canvas'); c.width = 128; c.height = 128;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, c.width, c.height);
+    ctx.fillStyle = fg;
+    ctx.textAlign = 'center';
+    // Name up top — auto-shrink to fit
+    const name = (lastName || '').toUpperCase();
+    let fontSize = 32;
+    ctx.font = 'bold ' + fontSize + 'px -apple-system, Helvetica, sans-serif';
+    while (ctx.measureText(name).width > 118 && fontSize > 12) {
+      fontSize -= 2;
+      ctx.font = 'bold ' + fontSize + 'px -apple-system, Helvetica, sans-serif';
+    }
+    ctx.textBaseline = 'top';
+    ctx.fillText(name, c.width / 2, 10);
+    // Number centered
+    ctx.font = 'bold 72px -apple-system, Helvetica, sans-serif';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(String(num), c.width / 2, c.height / 2 + 14);
+    // Flip horizontally so text reads correctly from behind the player.
+    const out = document.createElement('canvas'); out.width = 128; out.height = 128;
+    const octx = out.getContext('2d');
+    octx.translate(out.width, 0); octx.scale(-1, 1);
+    octx.drawImage(c, 0, 0);
+    return new THREE.CanvasTexture(out);
   }
 
   function createPlayerMesh(player, teamKey) {
@@ -30,14 +57,18 @@
       new THREE.MeshLambertMaterial({ color: secondary }));
     pants.position.y = 0.7; pants.castShadow = true; g.add(pants);
 
-    const torsoTex = jerseyNumberTexture(player.number, '#' + primary.getHexString(), '#' + secondary.getHexString());
+    const primaryHex = '#' + primary.getHexString();
+    const secondaryHex = '#' + secondary.getHexString();
+    const frontTex = jerseyFrontTexture(player.number, primaryHex, secondaryHex);
+    const lastName = (player.name || '').split(' ').slice(-1)[0];
+    const backTex = jerseyBackTexture(player.number, lastName, primaryHex, secondaryHex);
     const torsoMats = [
       new THREE.MeshLambertMaterial({ color: primary }),
       new THREE.MeshLambertMaterial({ color: primary }),
       new THREE.MeshLambertMaterial({ color: primary }),
       new THREE.MeshLambertMaterial({ color: primary }),
-      new THREE.MeshLambertMaterial({ map: torsoTex }),
-      new THREE.MeshLambertMaterial({ map: torsoTex }),
+      new THREE.MeshLambertMaterial({ map: frontTex }),   // +Z front
+      new THREE.MeshLambertMaterial({ map: backTex }),    // -Z back
     ];
     const torso = new THREE.Mesh(new THREE.BoxGeometry(1.1, 1.2, 0.7), torsoMats);
     torso.position.y = 2.0; torso.castShadow = true; g.add(torso);

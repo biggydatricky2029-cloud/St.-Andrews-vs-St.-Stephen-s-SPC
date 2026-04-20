@@ -18,11 +18,11 @@
     FB.kickMeterFrom = kicker;
     FB.attachBallTo(kicker);
     FB.ball.position.copy(kicker.mesh.position).add(new THREE.Vector3(0, 0.5, 0));
-    // Spawn return team on receiving side
     const recTeam = s.possession === 'home' ? 'away' : 'home';
     const kr1 = FB.getStarter(recTeam, 'KR1');
     if (kr1) FB.placePlayer(kr1, FB.ballXFromYard(20, recTeam), 0, 'KR1');
     FB.updateButtonStates && FB.updateButtonStates();
+    maybeAutoKick();
   };
 
   FB.setupPunt = function () {
@@ -40,6 +40,7 @@
     const recYd = Math.max(5, 100 - s.ballOn - 40);
     if (pr) FB.placePlayer(pr, FB.ballXFromYard(recYd, recTeam), 0, 'PR');
     FB.updateButtonStates && FB.updateButtonStates();
+    maybeAutoKick();
   };
 
   FB.setupFG = function (isXP) {
@@ -55,7 +56,15 @@
     FB.attachBallTo(k);
     FB.ball.position.copy(k.mesh.position).add(new THREE.Vector3(0, 0.5, 0));
     FB.updateButtonStates && FB.updateButtonStates();
+    maybeAutoKick();
   };
+
+  // Auto-release the power meter when the AI is the kicking team.
+  function maybeAutoKick() {
+    if (FB.state.possession === FB.userTeam) return;
+    const power = 60 + Math.random() * 25;
+    setTimeout(() => FB.onKickRelease(power), 900);
+  }
 
   // Called on POWER button release.
   FB.onKickRelease = function (powerPct) {
@@ -98,12 +107,12 @@
     } else {
       FB.state.log.push((FB.specialMode === 'xp' ? 'XP' : 'FG') + ' MISSED');
     }
+    const wasXP = FB.specialMode === 'xp';
     FB.recordStat(s.possession, FB.kickMeterFrom.player.number,
-      FB.specialMode === 'xp' ? 'xpAttempted' : 'fieldGoalsAttempted', 1);
+      wasXP ? 'xpAttempted' : 'fieldGoalsAttempted', 1);
     FB.specialMode = null;
     FB.ballState.inAir = false;
-    if (good && FB.specialMode === 'xp') FB.kickoffAfterScore();
-    else if (good) FB.kickoffAfterScore();
+    if (good || wasXP) FB.kickoffAfterScore();
     else FB.turnoverOnDowns();
   }
 

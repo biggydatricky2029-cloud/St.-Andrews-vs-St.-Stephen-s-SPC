@@ -63,6 +63,7 @@
     tap('btnHandoff', () => { FB.input.handoffPressed = true; });
     tap('btnJuke', () => { FB.input.juke = 1; });
     tap('btnDive', () => { FB.input.dive = true; });
+    tap('btnSwitch', () => { FB.switchDefender && FB.switchDefender(); });
     tap('btnPause', () => FB.openPause && FB.openPause());
 
     const sprintBtn = document.getElementById('btnSprint');
@@ -114,11 +115,14 @@
     const isPre = s.phase === 'presnap';
     const isPlay = s.phase === 'play';
     const isKick = s.phase === 'kick';
+    const userOnOffense = s.possession === FB.userTeam;
     show('btnSnap', isPre && s.playType !== 'kickoff' && s.playType !== 'fg' && s.playType !== 'punt');
-    show('btnHandoff', isPre && (s.playType === 'run' || s.playType === 'pass'));
-    show('btnPass', isPlay && FB.ballCarrier === FB.qb);
-    show('btnJuke', isPlay && FB.ballCarrier && FB.ballCarrier.team === s.possession);
-    show('btnDive', isPlay && FB.ballCarrier && FB.ballCarrier.team === s.possession);
+    show('btnHuddle', isPre && s.playType !== 'kickoff' && s.playType !== 'fg' && s.playType !== 'punt' && s.playType !== 'xp');
+    show('btnHandoff', isPre && userOnOffense && (s.playType === 'run' || s.playType === 'pass'));
+    show('btnPass', isPlay && userOnOffense && FB.ballCarrier === FB.qb);
+    show('btnJuke', isPlay && userOnOffense && FB.ballCarrier && FB.ballCarrier.team === s.possession);
+    show('btnDive', isPlay && userOnOffense && FB.ballCarrier && FB.ballCarrier.team === s.possession);
+    show('btnSwitch', isPlay && !userOnOffense);
     show('btnSprint', isPlay);
     show('btnPower', isKick);
   };

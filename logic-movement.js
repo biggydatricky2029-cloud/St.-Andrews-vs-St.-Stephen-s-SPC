@@ -11,6 +11,12 @@
     v.z = Math.max(-FIELD_WID / 2 + 0.5, Math.min(FIELD_WID / 2 - 0.5, v.z));
   }
 
+  // Returns the entity the user is currently controlling (offense carrier, or defender on D).
+  FB.userControlled = function () {
+    if (FB.state.possession === FB.userTeam) return FB.ballCarrier;
+    return FB.userDefender;
+  };
+
   // Update ball-carrier steered by joystick (or AI).
   FB.updateBallCarrier = function (dt) {
     const bc = FB.ballCarrier;
@@ -18,11 +24,10 @@
 
     const dir = FB.forwardDir(bc.team);
     let dx, dz;
-    if (bc.team === FB.state.possession && FB.state.phase === 'play') {
-      // Human controlled (joystick Y is up/down in screen → forward if negative on home side).
-      dx = FB.input.joyY * -1;   // up = forward on home side
+    // Human controls the carrier only when the user's team has possession.
+    if (bc.team === FB.state.possession && bc.team === FB.userTeam && FB.state.phase === 'play') {
+      dx = FB.input.joyY * -1;
       dz = FB.input.joyX;
-      // Remap so "up" always means forward for the possession team.
       if (bc.team === 'away') { dx = -dx; }
     } else {
       // Simple AI ball carrier: run forward, avoid nearest defender.
@@ -65,19 +70,16 @@
   FB.updateOffenseOthers = function (dt) {
     const pos = FB.state.possession;
     if (FB.state.phase !== 'play') return;
-    const dir = FB.forwardDir(pos);
     for (const ent of FB.offenseOf(pos)) {
       if (ent === FB.ballCarrier) continue;
       if (ent.isDown) continue;
-      if (['WR1','WR2','WR3','TE','RB'].includes(ent.role)) {
-        // Simple route: run forward and slightly outside, 18 yds then sit.
-        const depth = 18;
-        const origin = ent.target.length() > 0 ? ent.target :
-          (ent.target.copy(ent.mesh.position), ent.target);
-        const goal = origin.clone().add(new THREE.Vector3(dir * depth, 0, ent.role === 'WR3' ? -3 : 3));
-        steerToward(ent, goal, dt, 0.85);
+      if (['WR1','WR2','WR3','TE','RB'].includes(ent.role) && ent.route) {
+        const wp = ent.route[ent.routeIdx] || ent.route[ent.route.length - 1];
+        if (wp && ent.mesh.position.distanceTo(wp) < 1.2 && ent.routeIdx < ent.route.length - 1) {
+          ent.routeIdx += 1;
+        }
+        if (wp) steerToward(ent, wp, dt, 0.88);
       } else {
-        // Linemen push into nearest defender's line.
         const nearest = FB.nearestDefender(ent.mesh.position, pos);
         if (nearest.def && nearest.dist < 4) {
           steerToward(ent, nearest.def.mesh.position, dt, 0.55);
@@ -86,35 +88,82 @@
     }
   };
 
-  // Defense AI: pursue ball carrier / cover receivers.
+  // Defense AI: honor play assignment (rush / zone / man / blitz), else pursue.
   FB.updateDefense = function (dt) {
     const pos = FB.state.possession;
     if (FB.state.phase !== 'play') return;
-    const defTeam = pos === 'home' ? 'away' : 'home';
     const reaction = FB.diffMult[FB.state.difficulty] || 1;
     const carrier = FB.ballCarrier;
+    const defTeam = pos === 'home' ? 'away' : 'home';
+    const losX = FB.losLine ? FB.losLine.position.x : 0;
+    const dir = FB.forwardDir(pos);
+    const userCtrl = defTeam === FB.userTeam ? FB.userDefender : null;
+
     for (const ent of FB.defendersOf(pos)) {
       if (ent.isDown) continue;
-      // Pursuit: simple intercept.
-      let target;
-      if (carrier && FB.ballState.carried) {
-        const lead = carrier.vel.clone().multiplyScalar(0.35);
-        target = carrier.mesh.position.clone().add(lead);
-      } else if (FB.ballState.inAir && FB.ballState.targetPlayer) {
-        target = FB.ballState.targetPlayer.mesh.position.clone();
-      } else {
-        target = new THREE.Vector3(0, 0, ent.mesh.position.z);
-      }
-      steerToward(ent, target, dt, reaction);
 
-      // Tackle check
+      // User-controlled defender: joystick input.
+      if (ent === userCtrl && FB.state.phase === 'play') {
+        let dx = FB.input.joyY * -1, dz = FB.input.joyX;
+        if (ent.team === 'away') dx = -dx;
+        const mag = Math.hypot(dx, dz);
+        const sp = ent.baseSpeed * (FB.input.sprint && ent.stamina > 0 ? 1.3 : 1.0);
+        if (mag > 0.05) {
+          const nx = dx / mag, nz = dz / mag;
+          ent.vel.x += (nx * sp - ent.vel.x) * Math.min(1, dt * ent.accel / sp);
+          ent.vel.z += (nz * sp - ent.vel.z) * Math.min(1, dt * ent.accel / sp);
+          ent.mesh.rotation.y = Math.atan2(nx, nz);
+        } else ent.vel.multiplyScalar(Math.max(0, 1 - dt * 5));
+        if (FB.input.sprint && ent.stamina > 0) ent.stamina = Math.max(0, ent.stamina - dt * 18);
+        else ent.stamina = Math.min(100, ent.stamina + dt * 10);
+        ent.mesh.position.addScaledVector(ent.vel, dt);
+        clampField(ent.mesh.position);
+      } else {
+        // AI behavior driven by assignment.
+        let target = null;
+        const a = ent.assignment;
+        if (!a || a.type === 'rush' || a.type === 'blitz') {
+          // Go after the QB/ball carrier.
+          target = carrier && FB.ballState.carried ? carrier.mesh.position.clone()
+                 : FB.ball ? FB.ball.position.clone() : new THREE.Vector3(losX, 0, ent.mesh.position.z);
+        } else if (a.type === 'zone') {
+          const zx = losX + (a.depth || 0) * dir;
+          const zz = a.lateral || 0;
+          target = new THREE.Vector3(zx, 0, zz);
+          // If ball is near or in zone, pursue.
+          const ballPos = FB.ball ? FB.ball.position : null;
+          if (ballPos && Math.hypot(ballPos.x - zx, ballPos.z - zz) < 8) {
+            target = carrier && FB.ballState.carried ? carrier.mesh.position.clone() : ballPos.clone();
+          }
+        } else if (a.type === 'man') {
+          const mark = FB.offenseOf(pos).find(e => e.role === a.target);
+          if (mark) target = mark.mesh.position.clone().add(new THREE.Vector3(dir * -1, 0, 0));
+          if (carrier && FB.ballState.carried && carrier === mark) target = carrier.mesh.position.clone();
+          if (!target) target = new THREE.Vector3(losX, 0, ent.mesh.position.z);
+        }
+        steerToward(ent, target, dt, reaction * 0.95);
+      }
+
+      // Tackle check (any defender near the ball carrier).
       if (carrier && FB.ballState.carried && !carrier.isDown) {
         const d = ent.mesh.position.distanceTo(carrier.mesh.position);
-        if (d < 1.4) {
-          if (FB.attemptTackle) FB.attemptTackle(ent, carrier);
-        }
+        if (d < 1.4) { FB.attemptTackle && FB.attemptTackle(ent, carrier); }
       }
     }
+  };
+
+  FB.switchDefender = function () {
+    const defTeam = FB.state.possession === 'home' ? 'away' : 'home';
+    if (defTeam !== FB.userTeam) return;
+    const carrier = FB.ballCarrier;
+    if (!carrier) { FB.userDefender = FB.defendersOf(FB.state.possession)[0] || null; return; }
+    let best = null, bd = Infinity;
+    for (const d of FB.defendersOf(FB.state.possession)) {
+      if (d === FB.userDefender) continue;
+      const dist = d.mesh.position.distanceTo(carrier.mesh.position);
+      if (dist < bd) { bd = dist; best = d; }
+    }
+    if (best) FB.userDefender = best;
   };
 
   function steerToward(ent, target, dt, speedFrac) {
@@ -155,16 +204,18 @@
     }
   };
 
-  // Camera behind the ball carrier, with lerp + shake.
+  // Camera behind whichever player the user is controlling (or ball carrier on AI possession).
   FB.updateCamera = function (dt) {
     const cam = FB.camera;
     let focus;
-    if (FB.ballCarrier && FB.ballCarrier.mesh.visible) focus = FB.ballCarrier.mesh.position;
+    const userEnt = FB.userControlled && FB.userControlled();
+    if (userEnt && userEnt.mesh.visible) focus = userEnt.mesh.position;
+    else if (FB.ballCarrier && FB.ballCarrier.mesh.visible) focus = FB.ballCarrier.mesh.position;
     else if (FB.ball) focus = FB.ball.position;
     else return;
 
-    const pos = FB.state.possession;
-    const dir = FB.forwardDir(pos);
+    // Always frame toward the user team's offensive direction so "up" on the joystick = forward.
+    const dir = FB.forwardDir(FB.userTeam || FB.state.possession);
     const desired = new THREE.Vector3(focus.x - dir * 12, 8, focus.z);
     cam.position.lerp(desired, Math.min(1, 0.12));
     const look = focus.clone().add(new THREE.Vector3(dir * 6, 1, 0));

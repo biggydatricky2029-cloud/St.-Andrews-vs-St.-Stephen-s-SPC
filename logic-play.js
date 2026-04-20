@@ -20,28 +20,101 @@
     } else if (playType === 'fg' || playType === 'xp') {
       setupFG(playType === 'xp');
     } else {
-      FB.spawnOffense(s.possession, losX);
-      FB.spawnDefense(s.possession === 'home' ? 'away' : 'home', losX);
-      FB.attachBallTo(FB.qb);
-      FB.ball.position.copy(FB.qb.mesh.position).add(new THREE.Vector3(0, 2.2, 0.3));
+      // Pick plays: user picks one side, AI picks the other.
+      const userOff = s.possession === FB.userTeam;
+      if (userOff) {
+        FB.selectedPlay.defense = FB.pickAIPlay('defense');
+        FB.openPlayPicker('offense', () => finalizePlaySetup(losX));
+        return; // finalize when user confirms
+      } else {
+        FB.selectedPlay.offense = FB.pickAIPlay('offense');
+        FB.openPlayPicker('defense', () => finalizePlaySetup(losX));
+        return;
+      }
     }
     FB.updateButtonStates && FB.updateButtonStates();
     FB.updateHUD && FB.updateHUD();
   };
+
+  function finalizePlaySetup(losX) {
+    const s = FB.state;
+    const defTeam = s.possession === 'home' ? 'away' : 'home';
+    // Adapt playType to chosen offensive play.
+    const off = FB.selectedPlay.offense || FB.PLAYBOOK.offense[0];
+    s.playType = off.type === 'run' ? 'run' : 'pass';
+    FB.spawnOffense(s.possession, losX);
+    FB.spawnDefense(defTeam, losX);
+    FB.attachBallTo(FB.qb);
+    FB.ball.position.copy(FB.qb.mesh.position).add(new THREE.Vector3(0, 2.2, 0.3));
+
+    // Expand routes onto each offense entity (relative to snap position).
+    applyOffensiveRoutes(off);
+    // Store defense assignments (slot -> assignment).
+    const def = FB.selectedPlay.defense || FB.PLAYBOOK.defense[0];
+    applyDefensiveAssignments(def);
+
+    if (defTeam === FB.userTeam) {
+      FB.userDefender = FB.getStarter(defTeam, 'MLB') || FB.defendersOf(s.possession)[0] || null;
+      // AI offense snaps itself shortly after.
+      setTimeout(() => { if (FB.state.phase === 'presnap') FB.snapBall(); }, 1400);
+    } else {
+      FB.userDefender = null;
+    }
+
+    FB.updateButtonStates && FB.updateButtonStates();
+    FB.updateHUD && FB.updateHUD();
+  }
+
+  function applyOffensiveRoutes(off) {
+    const dir = FB.forwardDir(FB.state.possession);
+    for (const e of FB.offenseOf(FB.state.possession)) {
+      const rt = off.routes && off.routes[e.role];
+      if (rt && rt.length) {
+        e.route = FB.expandRoute(rt, e.mesh.position, dir);
+        e.routeIdx = 0;
+      } else {
+        e.route = null;
+      }
+    }
+  }
+  function applyDefensiveAssignments(def) {
+    const defTeam = FB.state.possession === 'home' ? 'away' : 'home';
+    for (const e of FB.activePlayers[defTeam]) {
+      if (!e.mesh.visible) continue;
+      e.assignment = (def.assignments && def.assignments[e.role]) || { type: 'rush' };
+    }
+  }
 
   FB.snapBall = function () {
     const s = FB.state;
     if (s.phase !== 'presnap') return;
     s.phase = 'play';
     FB.playTicker = 0;
-    // Remember receiver route starts.
     for (const e of FB.offenseOf(s.possession)) e.target.set(0, 0, 0);
-    // Handoff mode means RB takes ball at snap moment.
     if (s.playType === 'run') {
       setTimeout(() => FB.handoffToRB(), 80);
+    } else if (s.possession !== FB.userTeam) {
+      // AI QB: throw after 1.6–2.4s to the most open receiver.
+      const delay = 1600 + Math.random() * 800;
+      setTimeout(() => aiThrow(), delay);
     }
     FB.updateButtonStates && FB.updateButtonStates();
   };
+
+  function aiThrow() {
+    if (FB.state.phase !== 'play' || FB.ballCarrier !== FB.qb) return;
+    const rcvs = FB.visibleReceivers(FB.state.possession);
+    if (!rcvs.length) return;
+    // Score by separation from nearest defender (simple AI reads).
+    const opp = FB.state.possession === 'home' ? 'away' : 'home';
+    let best = rcvs[0], bestSep = -1;
+    for (const r of rcvs) {
+      const near = FB.nearestDefender(r.mesh.position, FB.state.possession);
+      const sep = near.dist || 0;
+      if (sep > bestSep) { bestSep = sep; best = r; }
+    }
+    FB.throwPass(best);
+  }
 
   FB.handoffToRB = function () {
     const s = FB.state;

@@ -21,6 +21,15 @@
       <div class="pg-team" id="pgAway"></div>
     </div>
     <div class="pg-notes" id="pgNotes"></div>
+    <div class="pg-team-pick">
+      <div class="pg-pick-label">Play as:</div>
+      <button class="team-pick-btn active" id="pickHome" data-team="home">
+        <span class="tp-logo tp-home">A</span>Highlanders
+      </button>
+      <button class="team-pick-btn" id="pickAway" data-team="away">
+        <span class="tp-logo tp-away">S</span>Spartans
+      </button>
+    </div>
     <div class="pg-actions">
       <label class="pg-sel">Quarter length:
         <select id="pgQuarterLen">
@@ -78,10 +87,28 @@
           <button class="act-btn" id="btnJuke">JUKE</button>
           <button class="act-btn" id="btnSprint">SPRINT</button>
           <button class="act-btn" id="btnDive">DIVE</button>
+          <button class="act-btn hidden" id="btnSwitch">SWITCH</button>
+          <button class="act-btn hidden" id="btnHuddle">HUDDLE</button>
           <button class="act-btn hidden" id="btnPower">POWER</button>
           <button class="act-btn" id="btnPause">&#9776;</button>
         </div>
         <div id="receiverPicker" class="rcv-picker hidden"></div>
+      </div>
+    </div>
+
+    <!-- Play picker (pre-snap huddle) -->
+    <div id="playPicker" class="modal hidden">
+      <div class="modal-card wide">
+        <div class="modal-title" id="playPickerTitle">PICK A PLAY</div>
+        <div class="tabs">
+          <button class="pp-tab active" data-pp="offense">Offense</button>
+          <button class="pp-tab" data-pp="defense">Defense</button>
+        </div>
+        <div id="playList" class="play-list"></div>
+        <div class="modal-actions">
+          <button id="ppConfirm" class="btn-primary">CONFIRM</button>
+          <button id="ppShuffle" class="btn-ghost">Shuffle</button>
+        </div>
       </div>
     </div>
 
@@ -147,6 +174,7 @@
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="ratings.js"></script>
+  <script src="playbook.js"></script>
   <script src="scene.js"></script>
   <script src="players.js"></script>
   <script src="controls.js"></script>

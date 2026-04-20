@@ -214,16 +214,88 @@
     }
   }
 
+  // ---- Team pick ----
+  function wireTeamPick() {
+    const btns = document.querySelectorAll('.team-pick-btn');
+    btns.forEach(b => b.addEventListener('click', () => {
+      btns.forEach(x => x.classList.remove('active'));
+      b.classList.add('active');
+      FB.userTeam = b.dataset.team;
+    }));
+    FB.userTeam = 'home';
+  }
+
+  // ---- Play picker ----
+  FB.selectedPlay = { offense: null, defense: null };
+  let ppSide = 'offense';
+  let ppCallback = null;
+
+  function wirePlayPicker() {
+    const tabs = document.querySelectorAll('.pp-tab');
+    tabs.forEach(t => t.addEventListener('click', () => {
+      tabs.forEach(x => x.classList.remove('active'));
+      t.classList.add('active');
+      ppSide = t.dataset.pp;
+      renderPlayList();
+    }));
+    document.getElementById('ppConfirm').addEventListener('click', () => {
+      const modal = document.getElementById('playPicker');
+      modal.classList.add('hidden');
+      if (ppCallback) { const cb = ppCallback; ppCallback = null; cb(); }
+    });
+    document.getElementById('ppShuffle').addEventListener('click', () => {
+      const list = FB.PLAYBOOK[ppSide];
+      FB.selectedPlay[ppSide] = list[Math.floor(Math.random() * list.length)];
+      renderPlayList();
+    });
+    const btnHuddle = document.getElementById('btnHuddle');
+    if (btnHuddle) btnHuddle.addEventListener('click', () => openPlayPicker(userIsOffense() ? 'offense' : 'defense', null));
+  }
+
+  function userIsOffense() {
+    return FB.state.possession === FB.userTeam;
+  }
+
+  FB.openPlayPicker = function (side, cb) {
+    ppSide = side || (userIsOffense() ? 'offense' : 'defense');
+    ppCallback = cb || null;
+    document.getElementById('playPickerTitle').textContent = side === 'offense' ? 'PICK AN OFFENSIVE PLAY' : 'PICK A DEFENSIVE PLAY';
+    // Sync tabs
+    document.querySelectorAll('.pp-tab').forEach(t => t.classList.toggle('active', t.dataset.pp === ppSide));
+    if (!FB.selectedPlay[ppSide]) FB.selectedPlay[ppSide] = FB.PLAYBOOK[ppSide][0];
+    renderPlayList();
+    document.getElementById('playPicker').classList.remove('hidden');
+  };
+
+  function renderPlayList() {
+    const list = document.getElementById('playList');
+    list.innerHTML = '';
+    const plays = FB.PLAYBOOK[ppSide];
+    for (const p of plays) {
+      const card = document.createElement('div');
+      card.className = 'play-card' + (FB.selectedPlay[ppSide] && FB.selectedPlay[ppSide].id === p.id ? ' active' : '');
+      card.innerHTML = '<div class="play-card-name">' + escapeHtml(p.name) + '</div>'
+        + '<div class="play-card-type">' + (p.type || p.formation || '') + '</div>'
+        + '<div class="play-card-notes">' + escapeHtml(p.notes || '') + '</div>';
+      card.addEventListener('click', () => {
+        FB.selectedPlay[ppSide] = p;
+        renderPlayList();
+      });
+      list.appendChild(card);
+    }
+  }
+
   // ---- Bootstrap ----
   async function start() {
     try { await loadRosters(); }
     catch (e) { alert('Failed to load roster.json: ' + e.message); return; }
     renderPreGame();
+    wireTeamPick();
+    wirePlayPicker();
     document.getElementById('pgStart').addEventListener('click', startGame);
     wireTabs();
     document.getElementById('goShare').addEventListener('click', shareResult);
     document.getElementById('goRestart').addEventListener('click', () => location.reload());
-    // Initial HUD logos
     document.getElementById('logoHome').textContent = FB.teams.home.initial;
     document.getElementById('logoAway').textContent = FB.teams.away.initial;
   }
@@ -240,9 +312,10 @@
     FB.createBall();
     FB.initJoystick();
     FB.initButtons();
-    // Coin toss → home receives opening kickoff (simplification).
-    FB.state.possession = 'away';
-    FB.state.homeRecv = true;
+    // User's team receives the opening kickoff (they get to be on offense first).
+    const other = FB.userTeam === 'home' ? 'away' : 'home';
+    FB.state.possession = other;                // kicking team has possession at setup
+    FB.state.homeRecv = FB.userTeam === 'home';
     FB.state.ballOn = 35; FB.state.los = 35; FB.state.down = 1; FB.state.distance = 10;
     FB.setupPlay('kickoff');
     FB.startLoop();
