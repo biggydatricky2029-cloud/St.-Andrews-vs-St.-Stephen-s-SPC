@@ -230,6 +230,16 @@
     }
 
     s.ballOn = newBallOn;
+
+    // Kickoff returns always end in a fresh 1st & 10 regardless of return yards.
+    if (FB.specialMode === 'kickoff') {
+      FB.specialMode = null;
+      s.los = s.ballOn; s.down = 1; s.distance = 10;
+      FB.state.log.push('Return spotted at ' + s.ballOn);
+      setTimeout(() => FB.setupPlay('pass'), 700);
+      return;
+    }
+
     FB.advanceDown(gain);
   };
 

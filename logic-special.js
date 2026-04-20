@@ -11,16 +11,48 @@
     s.phase = 'kick';
     FB.specialMode = 'kickoff';
     s.ballOn = 35; // kicking from own 35
-    const losX = FB.ballXFromYard(s.ballOn, s.possession);
+    const kickingTeam = s.possession;
+    const recTeam = kickingTeam === 'home' ? 'away' : 'home';
+    const dir = FB.forwardDir(kickingTeam);
+    const losX = FB.ballXFromYard(35, kickingTeam);
     FB.hideAllPlayers();
-    const kicker = FB.getStarter(s.possession, 'K');
+
+    // --- Kicker at own 35 ---
+    const kicker = FB.getStarter(kickingTeam, 'K');
     if (kicker) FB.placePlayer(kicker, losX, 0, 'K');
     FB.kickMeterFrom = kicker;
-    FB.attachBallTo(kicker);
-    FB.ball.position.copy(kicker.mesh.position).add(new THREE.Vector3(0, 0.5, 0));
-    const recTeam = s.possession === 'home' ? 'away' : 'home';
-    const kr1 = FB.getStarter(recTeam, 'KR1');
-    if (kr1) FB.placePlayer(kr1, FB.ballXFromYard(20, recTeam), 0, 'KR1');
+    if (kicker) {
+      FB.attachBallTo(kicker);
+      FB.ball.position.copy(kicker.mesh.position).add(new THREE.Vector3(0, 0.5, 0));
+    }
+
+    // --- 10 coverage players spread just behind the ball. Uses defensive
+    // starters so they automatically resolve as "defenders" once possession flips.
+    const coverageX = losX - 2 * dir;
+    const coverageZs = [-22, -17, -12, -7, -2, 2, 7, 12, 17, 22];
+    const coverRoles = FB.DEF_SLOTS.slice(0, 10);
+    for (let i = 0; i < coverRoles.length; i++) {
+      const ent = FB.getStarter(kickingTeam, coverRoles[i]);
+      if (!ent || ent === kicker) continue;
+      FB.placePlayer(ent, coverageX, coverageZs[i], coverRoles[i]);
+    }
+
+    // --- Returner at own 15 (deep). ---
+    const returner = FB.getStarter(recTeam, 'KR1');
+    if (returner) FB.placePlayer(returner, FB.ballXFromYard(15, recTeam), 0, 'KR1');
+
+    // --- 10 return blockers in a staggered wedge at receiving team's 35. ---
+    const blockerX = FB.ballXFromYard(35, recTeam);
+    const blockerZs = [-22, -17, -12, -7, -3, 3, 7, 12, 17, 22];
+    const blockerRoles = FB.OFF_SLOTS;
+    let bi = 0;
+    for (const role of blockerRoles) {
+      if (bi >= blockerZs.length) break;
+      const ent = FB.getStarter(recTeam, role);
+      if (!ent || ent === returner) continue;
+      FB.placePlayer(ent, blockerX, blockerZs[bi++], role);
+    }
+
     FB.updateButtonStates && FB.updateButtonStates();
     maybeAutoKick();
   };
@@ -120,8 +152,37 @@
     else FB.turnoverOnDowns();
   }
 
+  // Called while the ball is in the air on a kickoff — sprints coverage down
+  // the field so they close on the returner quickly.
+  FB.updateKickoffCoverage = function (dt) {
+    if (FB.specialMode !== 'kickoff') return;
+    const s = FB.state;
+    if (s.phase !== 'kick') return;
+    const kickingTeam = s.possession;
+    const ballPos = FB.ball ? FB.ball.position : null;
+    const dir = FB.forwardDir(kickingTeam);
+    for (const e of FB.activePlayers[kickingTeam]) {
+      if (!e.mesh.visible || e === FB.kickMeterFrom) continue;
+      if (!FB.DEF_SLOTS.includes(e.role)) continue;
+      const tgt = ballPos
+        ? new THREE.Vector3(ballPos.x - dir * 2, 0, ballPos.z * 0.6 + e.mesh.position.z * 0.4)
+        : new THREE.Vector3(e.mesh.position.x + dir * 30, 0, e.mesh.position.z);
+      FB.steerToward(e, tgt, dt, 1.0);
+    }
+    // Blockers drift upfield to meet coverage.
+    const recTeam = kickingTeam === 'home' ? 'away' : 'home';
+    const blockDir = FB.forwardDir(recTeam);
+    for (const e of FB.activePlayers[recTeam]) {
+      if (!e.mesh.visible) continue;
+      if (e.role === 'KR1') continue;
+      const tgt = new THREE.Vector3(e.mesh.position.x + blockDir * 10, 0, e.mesh.position.z);
+      FB.steerToward(e, tgt, dt, 0.75);
+    }
+  };
+
   FB.onBallLanded = function () {
-    if (FB.specialMode === 'kickoff' || FB.specialMode === 'punt') {
+    if (FB.specialMode === 'kickoff') { handleKickoffCatch(); return; }
+    if (FB.specialMode === 'punt') {
       const s = FB.state;
       const recTeam = s.possession === 'home' ? 'away' : 'home';
       const yd = FB.yardFromBallX(FB.ball.position.x, recTeam);
@@ -133,6 +194,67 @@
       setTimeout(() => FB.setupPlay('pass'), 700);
     }
   };
+
+  function handleKickoffCatch() {
+    const s = FB.state;
+    const kickingTeam = s.possession;
+    const recTeam = kickingTeam === 'home' ? 'away' : 'home';
+
+    // Find the receiving-team player nearest to where the ball lands — they
+    // field the kick and become the returner.
+    let catcher = null, bestD = Infinity;
+    for (const e of FB.activePlayers[recTeam]) {
+      if (!e.mesh.visible || e.isDown) continue;
+      const d = e.mesh.position.distanceTo(FB.ball.position);
+      if (d < bestD) { bestD = d; catcher = e; }
+    }
+    if (!catcher) {
+      // No receiver in range — spot the ball for a normal down.
+      const yd = FB.yardFromBallX(FB.ball.position.x, recTeam);
+      s.possession = recTeam;
+      s.ballOn = Math.max(5, Math.min(95, Math.round(yd)));
+      s.down = 1; s.distance = 10; s.los = s.ballOn;
+      FB.specialMode = null;
+      setTimeout(() => FB.setupPlay('pass'), 600);
+      return;
+    }
+
+    // Snap the catcher onto the ball's landing spot for a clean visible catch.
+    catcher.mesh.position.x = FB.ball.position.x;
+    catcher.mesh.position.z = FB.ball.position.z;
+    catcher.vel.set(0, 0, 0);
+    catcher.mesh.rotation.y = FB.forwardDir(recTeam) === 1 ? -Math.PI / 2 : Math.PI / 2;
+
+    // Flip possession; returner now has the ball live.
+    s.possession = recTeam;
+    const catchYd = FB.yardFromBallX(catcher.mesh.position.x, recTeam);
+    s.los = Math.max(1, Math.min(99, Math.round(catchYd)));
+    s.ballOn = s.los;
+    s.down = 1; s.distance = 10;
+    s.phase = 'play';
+    s.playType = 'kickoffReturn';
+
+    FB.attachBallTo(catcher);
+    FB.ballState.inAir = false;
+    FB.state.log.push('Kickoff fielded by #' + catcher.player.number);
+
+    // Coverage swarms the returner: wipe any prior assignments so defenders pursue.
+    for (const e of FB.activePlayers[kickingTeam]) {
+      if (!e.mesh.visible) continue;
+      e.assignment = { type: 'rush' };
+    }
+    // Ensure the kicker also chases.
+    if (FB.kickMeterFrom) FB.kickMeterFrom.assignment = { type: 'rush' };
+
+    // If the defense is the user's team, hand them the closest chaser.
+    if (FB.userTeam === kickingTeam) {
+      const defs = FB.defendersOf(s.possession);
+      FB.userDefender = defs.length ? defs[0] : null;
+    } else {
+      FB.userDefender = null;
+    }
+    FB.updateButtonStates && FB.updateButtonStates();
+  }
 
   FB.kickoffAfterScore = function () {
     // After any score, the scoring team kicks off to the other team.

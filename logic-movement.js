@@ -22,6 +22,12 @@
     const bc = FB.ballCarrier;
     if (!bc || bc.isDown || !FB.ballState.carried) return;
 
+    // Before the snap/kick the carrier stays put — just glue the ball to them.
+    if (FB.state.phase !== 'play') {
+      FB.ball.position.copy(bc.mesh.position).add(new THREE.Vector3(0, bc.carryY || 2.2, 0.3));
+      return;
+    }
+
     const dir = FB.forwardDir(bc.team);
     let dx, dz;
     // Human controls the carrier only when the user's team has possession.
@@ -150,7 +156,9 @@
             if (depth < 6) target = carrier.mesh.position.clone();
           }
         }
-        steerToward(ent, target, dt, reaction * 0.95);
+        // Kickoff coverage sprints so the returner gets swarmed within seconds.
+        const koChase = FB.specialMode === 'kickoff' ? 1.18 : 1;
+        steerToward(ent, target, dt, reaction * 0.95 * koChase);
       }
 
       // Tackle check (any defender near the ball carrier).

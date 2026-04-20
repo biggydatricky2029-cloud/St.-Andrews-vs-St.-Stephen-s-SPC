@@ -52,6 +52,7 @@
       FB.updateBallCarrier && FB.updateBallCarrier(dt);
       FB.updateOffenseOthers && FB.updateOffenseOthers(dt);
       FB.updateDefense && FB.updateDefense(dt);
+      FB.updateKickoffCoverage && FB.updateKickoffCoverage(dt);
       FB.updateBallPhysics && FB.updateBallPhysics(dt);
     }
 
