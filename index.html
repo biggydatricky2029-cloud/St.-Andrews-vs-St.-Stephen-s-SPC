@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="theme-color" content="#0a2463" />
+  <title>Highlanders vs Spartans — 3D Football</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- Pre-game screen -->
+  <div id="preGame" class="screen">
+    <div class="pg-header">
+      <div class="pg-title">Highlanders <span class="pg-vs">vs</span> Spartans</div>
+      <div class="pg-sub">3D Football — Original Edition</div>
+    </div>
+    <div class="pg-teams">
+      <div class="pg-team" id="pgHome"></div>
+      <div class="pg-team" id="pgAway"></div>
+    </div>
+    <div class="pg-notes" id="pgNotes"></div>
+    <div class="pg-actions">
+      <label class="pg-sel">Quarter length:
+        <select id="pgQuarterLen">
+          <option value="150">2:30</option>
+          <option value="240">4:00</option>
+          <option value="360">6:00</option>
+        </select>
+      </label>
+      <label class="pg-sel">Difficulty:
+        <select id="pgDifficulty">
+          <option value="easy">Easy</option>
+          <option value="normal" selected>Normal</option>
+          <option value="hard">Hard</option>
+        </select>
+      </label>
+      <button id="pgStart" class="btn-primary">START GAME</button>
+    </div>
+  </div>
+
+  <!-- 3D canvas host -->
+  <div id="gameHost" class="screen hidden">
+    <canvas id="gl"></canvas>
+
+    <!-- HUD -->
+    <div id="hud" class="hud">
+      <div class="hud-top">
+        <div class="hud-scorebox">
+          <div class="logo" id="logoHome">A</div>
+          <div class="score" id="scoreHome">0</div>
+          <div class="hud-center">
+            <div class="hud-clock" id="hudClock">2:30</div>
+            <div class="hud-qtr" id="hudQtr">Q1</div>
+            <div class="hud-dnd" id="hudDnD">1st &amp; 10</div>
+            <div class="hud-ball" id="hudBallOn">A 25</div>
+          </div>
+          <div class="score" id="scoreAway">0</div>
+          <div class="logo" id="logoAway">S</div>
+        </div>
+        <div class="hud-warn hidden" id="hudWarn"></div>
+      </div>
+
+      <div class="hud-left">
+        <div class="stamina-bar"><div id="staminaFill"></div></div>
+        <div id="joystick" class="joystick">
+          <div id="joyThumb" class="joy-thumb"></div>
+        </div>
+      </div>
+
+      <div class="hud-right">
+        <div class="hud-play" id="hudPlay"></div>
+        <div class="btn-col">
+          <button class="act-btn" id="btnSnap">SNAP</button>
+          <button class="act-btn" id="btnPass">PASS</button>
+          <button class="act-btn" id="btnHandoff">HAND</button>
+          <button class="act-btn" id="btnJuke">JUKE</button>
+          <button class="act-btn" id="btnSprint">SPRINT</button>
+          <button class="act-btn" id="btnDive">DIVE</button>
+          <button class="act-btn hidden" id="btnPower">POWER</button>
+          <button class="act-btn" id="btnPause">&#9776;</button>
+        </div>
+        <div id="receiverPicker" class="rcv-picker hidden"></div>
+      </div>
+    </div>
+
+    <!-- 4th down prompt -->
+    <div id="fourthPrompt" class="modal hidden">
+      <div class="modal-card">
+        <div class="modal-title">4TH DOWN</div>
+        <div class="modal-body" id="fourthBody"></div>
+        <div class="modal-actions" id="fourthActions"></div>
+      </div>
+    </div>
+
+    <!-- XP/2PT prompt -->
+    <div id="xpPrompt" class="modal hidden">
+      <div class="modal-card">
+        <div class="modal-title">TOUCHDOWN!</div>
+        <div class="modal-actions">
+          <button id="xpKick" class="btn-primary">KICK XP</button>
+          <button id="xpTwo" class="btn-ghost">GO FOR 2</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pause / subs menu -->
+    <div id="pauseMenu" class="modal hidden">
+      <div class="modal-card wide">
+        <div class="modal-title">PAUSED</div>
+        <div class="tabs">
+          <button class="tab active" data-tab="main">Menu</button>
+          <button class="tab" data-tab="subs">Subs</button>
+          <button class="tab" data-tab="roster">Rosters</button>
+        </div>
+        <div class="tab-panel" id="tabMain">
+          <button class="btn-primary" id="pmResume">Resume</button>
+          <button class="btn-ghost" id="pmRestart">Restart</button>
+          <div class="pg-sub" style="margin-top:12px">Difficulty, clock, and match settings persist for this game.</div>
+        </div>
+        <div class="tab-panel hidden" id="tabSubs">
+          <div class="sub-team-tabs">
+            <button class="sub-team-btn active" data-team="home">Highlanders</button>
+            <button class="sub-team-btn" data-team="away">Spartans</button>
+          </div>
+          <div id="subList" class="sub-list"></div>
+        </div>
+        <div class="tab-panel hidden" id="tabRoster">
+          <div id="rosterView" class="roster-view"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Game over -->
+    <div id="gameOver" class="modal hidden">
+      <div class="modal-card wide">
+        <div class="modal-title" id="goTitle">FINAL</div>
+        <div class="modal-body" id="goBody"></div>
+        <div class="modal-actions">
+          <button id="goShare" class="btn-primary">Share</button>
+          <button id="goRestart" class="btn-ghost">Play Again</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="ratings.js"></script>
+  <script src="scene.js"></script>
+  <script src="players.js"></script>
+  <script src="controls.js"></script>
+  <script src="logic-movement.js"></script>
+  <script src="logic-play.js"></script>
+  <script src="logic-special.js"></script>
+  <script src="logic-clock.js"></script>
+  <script src="logic-loop.js"></script>
+  <script src="ui.js"></script>
+</body>
+</html>
