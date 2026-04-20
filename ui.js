@@ -120,32 +120,42 @@
         const cands = document.createElement('div');
         cands.className = 'sub-candidates';
         const slotInfo = [].concat(Ratings.OFFENSE_SLOTS, Ratings.DEFENSE_SLOTS, Ratings.ST_SLOTS).find(x => x.slot === slot);
-        const eligiblePos = slotInfo && slotInfo.pos ? slotInfo.pos : [];
-        const sorted = [...team.players].sort((a, b) => {
-          const ae = a.positions.some(pp => eligiblePos.includes(pp)) ? 1 : 0;
-          const be = b.positions.some(pp => eligiblePos.includes(pp)) ? 1 : 0;
-          if (ae !== be) return be - ae;
-          return (b.overall || 0) - (a.overall || 0);
-        });
+        const eligiblePos = slotInfo && slotInfo.pos ? slotInfo.pos : null;
+        // Only players who actually play this position can be subbed in.
+        // Returner slots (eligiblePos=null) accept any skill-capable player.
+        const eligiblePlayers = team.players.filter(p =>
+          eligiblePos ? p.positions.some(pp => eligiblePos.includes(pp)) : true
+        );
+        const sorted = eligiblePlayers.sort((a, b) => (b.overall || 0) - (a.overall || 0));
         const curQuarter = (FB.state && FB.state.quarter) || 1;
         for (const p of sorted) {
           const btn = document.createElement('button');
           const locked = Array.isArray(p._quarterRestrict) && p._quarterRestrict.length > 0;
           const lockedNow = locked && !p._quarterRestrict.includes(curQuarter);
           btn.className = 'sub-cand' + (p.number === cur ? ' active' : '') + (lockedNow ? ' locked' : '');
-          const eligible = p.positions.some(pp => eligiblePos.includes(pp));
           const last = p.name.split(' ').slice(-1)[0];
           const lockTag = lockedNow ? ' <span class="sc-lock">Q' + p._quarterRestrict.join('/Q') + '</span>' : '';
+          // Flag slots elsewhere on this side where the player is already a starter.
+          let dupSlot = null;
+          for (const otherSlot of Object.keys(lineup[g.side])) {
+            if (otherSlot !== slot && lineup[g.side][otherSlot] === p.number) { dupSlot = otherSlot; break; }
+          }
+          const dupTag = dupSlot ? ' <span class="sc-lock">in ' + dupSlot + '</span>' : '';
           btn.innerHTML = '<span class="sc-num">#' + p.number + '</span>'
-            + '<span class="sc-name">' + escapeHtml(last) + (eligible ? '' : '<span class="sc-alt">*</span>') + lockTag + '</span>'
+            + '<span class="sc-name">' + escapeHtml(last) + lockTag + dupTag + '</span>'
             + '<span class="sc-ovr">OVR ' + p.overall + '</span>';
           const displayName = p.displayName || p.name;
           btn.title = displayName + ' — positions: ' + p.positions.join('/') + ' — OVR ' + p.overall
-            + (locked ? ' — available only in Q' + p._quarterRestrict.join('/Q') : '');
+            + (locked ? ' — available only in Q' + p._quarterRestrict.join('/Q') : '')
+            + (dupSlot ? ' — currently starting at ' + dupSlot + '; subbing in will swap' : '');
           if (lockedNow) {
             btn.disabled = true;
           } else {
             btn.addEventListener('click', () => {
+              // A player can't start at two positions on the same side at once —
+              // if they're already in another slot here, swap with the current starter.
+              const prevInThisSlot = lineup[g.side][slot];
+              if (dupSlot) lineup[g.side][dupSlot] = prevInThisSlot != null ? prevInThisSlot : null;
               lineup[g.side][slot] = p.number;
               renderSubsView(teamKey);
             });
@@ -159,7 +169,7 @@
     const note = document.createElement('div');
     note.className = 'pg-sub';
     note.style.marginTop = '8px';
-    note.textContent = 'Tip: any player can be subbed into any slot. * = not a listed position for this slot (rating may not reflect fit). Greyed-out players are quarter-locked — e.g. Edward Cantrell unlocks in Q3/Q4.';
+    note.textContent = 'Only players who play the slot position are shown. Multi-position players can fill any of their positions, but never two slots at once on the same side — reselecting swaps them. Greyed-out players are quarter-locked.';
     list.appendChild(note);
   }
 
@@ -327,7 +337,6 @@
     FB.state.difficulty = document.getElementById('pgDifficulty').value || 'varsity';
     document.getElementById('preGame').classList.add('hidden');
     document.getElementById('gameHost').classList.remove('hidden');
-    if (FB.sfx && FB.sfx.start) FB.sfx.start();
     FB.initThree();
     FB.buildTeamMeshes('home');
     FB.buildTeamMeshes('away');

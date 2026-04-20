@@ -88,7 +88,6 @@
     s.score[s.possession] += 6;
     FB.state.log.push('TOUCHDOWN ' + FB.teams[s.possession].shortName + '!');
     FB.updateHUD && FB.updateHUD();
-    if (FB.sfx && FB.sfx.cheerBurst) FB.sfx.cheerBurst(s.possession === FB.userTeam ? 1.2 : 0.6);
     const modal = document.getElementById('xpPrompt');
     modal.classList.remove('hidden');
     const kickBtn = document.getElementById('xpKick');

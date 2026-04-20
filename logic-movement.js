@@ -157,7 +157,7 @@
           }
         }
         // Kickoff coverage sprints so the returner gets swarmed within seconds.
-        const koChase = FB.specialMode === 'kickoff' ? 1.18 : 1;
+        const koChase = FB.specialMode === 'kickoff' ? 1.30 : 1;
         steerToward(ent, target, dt, reaction * 0.95 * koChase);
       }
 

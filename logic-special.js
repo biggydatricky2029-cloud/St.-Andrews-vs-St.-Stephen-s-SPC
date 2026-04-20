@@ -17,7 +17,9 @@
     const losX = FB.ballXFromYard(35, kickingTeam);
     FB.hideAllPlayers();
 
-    // --- Kicker at own 35 ---
+    // --- 11 kicking-team players spread evenly across the field on the 35. ---
+    // Evenly spaced Z positions from -26 to +26 (field width ~53.3).
+    const lineZs = [-26, -20.8, -15.6, -10.4, -5.2, 0, 5.2, 10.4, 15.6, 20.8, 26];
     const kicker = FB.getStarter(kickingTeam, 'K');
     if (kicker) FB.placePlayer(kicker, losX, 0, 'K');
     FB.kickMeterFrom = kicker;
@@ -25,16 +27,15 @@
       FB.attachBallTo(kicker);
       FB.ball.position.copy(kicker.mesh.position).add(new THREE.Vector3(0, 0.5, 0));
     }
-
-    // --- 10 coverage players spread just behind the ball. Uses defensive
-    // starters so they automatically resolve as "defenders" once possession flips.
-    const coverageX = losX - 2 * dir;
-    const coverageZs = [-22, -17, -12, -7, -2, 2, 7, 12, 17, 22];
+    // The other 10 coverage players take the remaining evenly-spaced Z slots.
+    // Use defensive starters so they automatically count as "defenders" when
+    // possession flips to the receiving team.
+    const coverZs = lineZs.filter(z => z !== 0);
     const coverRoles = FB.DEF_SLOTS.slice(0, 10);
     for (let i = 0; i < coverRoles.length; i++) {
       const ent = FB.getStarter(kickingTeam, coverRoles[i]);
       if (!ent || ent === kicker) continue;
-      FB.placePlayer(ent, coverageX, coverageZs[i], coverRoles[i]);
+      FB.placePlayer(ent, losX, coverZs[i], coverRoles[i]);
     }
 
     // --- Returner at own 15 (deep). ---
@@ -167,7 +168,7 @@
       const tgt = ballPos
         ? new THREE.Vector3(ballPos.x - dir * 2, 0, ballPos.z * 0.6 + e.mesh.position.z * 0.4)
         : new THREE.Vector3(e.mesh.position.x + dir * 30, 0, e.mesh.position.z);
-      FB.steerToward(e, tgt, dt, 1.0);
+      FB.steerToward(e, tgt, dt, 1.10);
     }
     // Blockers drift upfield to meet coverage.
     const recTeam = kickingTeam === 'home' ? 'away' : 'home';

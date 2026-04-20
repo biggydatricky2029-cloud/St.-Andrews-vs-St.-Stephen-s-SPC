@@ -75,47 +75,47 @@
     const g = new THREE.Group();
     const pantsMat = new THREE.MeshLambertMaterial({ color: secondary });
 
-    // --- Feet / cleats ---
+    // --- Feet / cleats (pointed forward = +Z; hip spread along X). ---
     const footL = 0.42, footW = 0.22, footH = 0.1;
-    const hipZ = 0.22 * girth;
-    for (const dz of [-hipZ, hipZ]) {
-      const foot = new THREE.Mesh(new THREE.BoxGeometry(footL, footH, footW), cleatMat);
-      foot.position.set(0.06, footH / 2, dz);
+    const hipX = 0.22 * girth;
+    for (const dx of [-hipX, hipX]) {
+      const foot = new THREE.Mesh(new THREE.BoxGeometry(footW, footH, footL), cleatMat);
+      foot.position.set(dx, footH / 2, 0.06);
       foot.castShadow = true;
       g.add(foot);
     }
 
-    // --- Legs: ankle, calf, knee, thigh (tapered) ---
+    // --- Legs: ankle, calf, knee, thigh (tapered), hips on X axis. ---
     const ankleY = footH;
     const calfH = 0.68, thighH = 0.84;
     const kneeY = ankleY + calfH;
     const thighTopY = kneeY + thighH;
     const calfR = 0.17 * girth;
     const thighRTop = 0.22 * girth, thighRBot = 0.19 * girth;
-    for (const dz of [-hipZ, hipZ]) {
+    for (const dx of [-hipX, hipX]) {
       const sock = new THREE.Mesh(
         new THREE.CylinderGeometry(calfR * 0.95, calfR * 0.9, 0.22, 10),
         sockMat
       );
-      sock.position.set(0, ankleY + 0.11, dz);
+      sock.position.set(dx, ankleY + 0.11, 0);
       sock.castShadow = true;
       g.add(sock);
       const calf = new THREE.Mesh(
         new THREE.CylinderGeometry(calfR * 1.05, calfR * 0.95, calfH - 0.22, 10),
         skinMat
       );
-      calf.position.set(0, ankleY + 0.22 + (calfH - 0.22) / 2, dz);
+      calf.position.set(dx, ankleY + 0.22 + (calfH - 0.22) / 2, 0);
       calf.castShadow = true;
       g.add(calf);
       const knee = new THREE.Mesh(new THREE.SphereGeometry(calfR * 1.1, 10, 8), pantsMat);
-      knee.position.set(0, kneeY, dz);
+      knee.position.set(dx, kneeY, 0);
       knee.castShadow = true;
       g.add(knee);
       const thigh = new THREE.Mesh(
         new THREE.CylinderGeometry(thighRTop, thighRBot, thighH, 10),
         pantsMat
       );
-      thigh.position.set(0, kneeY + thighH / 2, dz);
+      thigh.position.set(dx, kneeY + thighH / 2, 0);
       thigh.castShadow = true;
       g.add(thigh);
     }
@@ -168,22 +168,24 @@
     torso.castShadow = true;
     g.add(torso);
 
-    // --- Shoulder pads: wider, beveled top with slight slope to the sides. ---
-    const padsY = torsoY + torsoH / 2 + 0.1;
-    const pads = new THREE.Mesh(
-      new THREE.BoxGeometry(1.62 * girth, 0.3, torsoTopD + 0.2),
+    // --- Shoulders: slim yoke + full rounded caps for a natural shoulder line. ---
+    const padsY = torsoY + torsoH / 2 + 0.06;
+    const shoulderSpan = 1.18 * girth;
+    const yoke = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.14, 0.14, shoulderSpan, 12),
       new THREE.MeshLambertMaterial({ color: primary })
     );
-    pads.position.y = padsY;
-    pads.castShadow = true;
-    g.add(pads);
-    // Shoulder caps (dome over each shoulder).
+    yoke.rotation.z = Math.PI / 2;
+    yoke.position.set(0, padsY, 0);
+    yoke.castShadow = true;
+    g.add(yoke);
+    const capR = 0.22 * girth;
     for (const sgn of [-1, 1]) {
       const cap = new THREE.Mesh(
-        new THREE.SphereGeometry(0.28 * girth, 10, 8, 0, Math.PI * 2, 0, Math.PI / 2),
+        new THREE.SphereGeometry(capR, 14, 12),
         new THREE.MeshLambertMaterial({ color: primary })
       );
-      cap.position.set(sgn * 0.72 * girth, padsY + 0.05, 0);
+      cap.position.set(sgn * shoulderSpan / 2, padsY, 0);
       cap.castShadow = true;
       g.add(cap);
     }
@@ -194,8 +196,8 @@
     const foreLen = 0.55;
     const armR = 0.135 * girth;
     for (const sgn of [-1, 1]) {
-      const shoulderX = sgn * (0.58 * girth + armR * 0.8);
-      const shoulderY = padsY - 0.08;
+      const shoulderX = sgn * (shoulderSpan / 2);
+      const shoulderY = padsY - 0.12;
       const sleeve = new THREE.Mesh(
         new THREE.CylinderGeometry(armR * 1.08, armR * 0.95, upperLen * 0.45, 10),
         armMat
@@ -375,7 +377,8 @@
     ent.mesh.visible = true;
     ent.role = role;
     const dir = FB.forwardDir(ent.team);
-    ent.mesh.rotation.y = dir === 1 ? -Math.PI / 2 : Math.PI / 2;
+    // Body front is +Z local; rotate so it faces the team's forward X direction.
+    ent.mesh.rotation.y = dir === 1 ? Math.PI / 2 : -Math.PI / 2;
   };
 
   FB.hideAllPlayers = function () {
