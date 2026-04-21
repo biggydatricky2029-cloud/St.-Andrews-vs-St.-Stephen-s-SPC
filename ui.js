@@ -258,6 +258,8 @@
   FB.selectedPlay = { offense: null, defense: null };
   let ppSide = 'offense';
   let ppCallback = null;
+  const PP_PAGE_SIZE = 3;
+  let ppPage = { offense: 0, defense: 0 };
 
   function wirePlayPicker() {
     const tabs = document.querySelectorAll('.pp-tab');
@@ -277,6 +279,9 @@
     document.getElementById('ppShuffle').addEventListener('click', () => {
       const list = FB.PLAYBOOK[ppSide];
       FB.selectedPlay[ppSide] = list[Math.floor(Math.random() * list.length)];
+      // Jump the page to the shuffled play so it's visible.
+      const idx = list.indexOf(FB.selectedPlay[ppSide]);
+      ppPage[ppSide] = Math.max(0, Math.floor(idx / PP_PAGE_SIZE));
       renderPlayList();
     });
     const btnHuddle = document.getElementById('btnHuddle');
@@ -294,6 +299,7 @@
     // Sync tabs
     document.querySelectorAll('.pp-tab').forEach(t => t.classList.toggle('active', t.dataset.pp === ppSide));
     if (!FB.selectedPlay[ppSide]) FB.selectedPlay[ppSide] = FB.PLAYBOOK[ppSide][0];
+    ppPage[ppSide] = 0;
     renderPlayList();
     document.getElementById('playPicker').classList.remove('hidden');
   };
@@ -302,7 +308,11 @@
     const list = document.getElementById('playList');
     list.innerHTML = '';
     const plays = FB.PLAYBOOK[ppSide];
-    for (const p of plays) {
+    const totalPages = Math.max(1, Math.ceil(plays.length / PP_PAGE_SIZE));
+    if (ppPage[ppSide] >= totalPages) ppPage[ppSide] = 0;
+    const start = ppPage[ppSide] * PP_PAGE_SIZE;
+    const slice = plays.slice(start, start + PP_PAGE_SIZE);
+    for (const p of slice) {
       const card = document.createElement('div');
       card.className = 'play-card' + (FB.selectedPlay[ppSide] && FB.selectedPlay[ppSide].id === p.id ? ' active' : '');
       card.innerHTML = '<div class="play-card-name">' + escapeHtml(p.name) + '</div>'
@@ -313,6 +323,17 @@
         renderPlayList();
       });
       list.appendChild(card);
+    }
+    if (totalPages > 1) {
+      const nav = document.createElement('div');
+      nav.className = 'play-page-nav';
+      nav.innerHTML = '<button class="play-page-arrow" aria-label="More plays">▼</button>'
+        + '<div class="play-page-indicator">' + (ppPage[ppSide] + 1) + ' / ' + totalPages + '</div>';
+      nav.querySelector('.play-page-arrow').addEventListener('click', () => {
+        ppPage[ppSide] = (ppPage[ppSide] + 1) % totalPages;
+        renderPlayList();
+      });
+      list.appendChild(nav);
     }
   }
 
