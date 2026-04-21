@@ -57,6 +57,7 @@
       FB.updateBallPhysics && FB.updateBallPhysics(dt);
     }
     FB.updatePlayerRigs && FB.updatePlayerRigs(dt);
+    FB.updateRefAnim && FB.updateRefAnim(dt);
 
     FB.updateCamera && FB.updateCamera(dt);
     FB.tickClock && FB.tickClock(dt);

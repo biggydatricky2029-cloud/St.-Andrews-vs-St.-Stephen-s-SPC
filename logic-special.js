@@ -11,6 +11,7 @@
     s.phase = 'kick';
     FB.specialMode = 'kickoff';
     s.ballOn = 35; // kicking from own 35
+    s.spotZ = 0;
     const kickingTeam = s.possession;
     const recTeam = kickingTeam === 'home' ? 'away' : 'home';
     const dir = FB.forwardDir(kickingTeam);
@@ -65,6 +66,7 @@
     const s = FB.state;
     s.phase = 'kick';
     FB.specialMode = 'punt';
+    s.spotZ = 0;
     const losX = FB.ballXFromYard(s.ballOn, s.possession);
     FB.hideAllPlayers();
     const p = FB.getStarter(s.possession, 'P');
@@ -83,6 +85,7 @@
     const s = FB.state;
     s.phase = 'kick';
     FB.specialMode = isXP ? 'xp' : 'fg';
+    s.spotZ = 0;
     const spotYd = isXP ? 98 : s.ballOn; // XP from opponent 2
     const losX = FB.ballXFromYard(spotYd, s.possession);
     FB.hideAllPlayers();
@@ -205,8 +208,15 @@
       s.ballOn = Math.max(5, Math.min(95, Math.round(yd)));
       s.down = 1; s.distance = 10; s.los = s.ballOn;
       FB.specialMode = null;
+      const endZ = FB.ball.position.z;
+      s.spotZ = FB.computeSpotZ ? FB.computeSpotZ(endZ) : 0;
       FB.state.log.push('Ball spotted at ' + s.ballOn);
-      setTimeout(() => FB.setupPlay('pass'), 700);
+      const losX = FB.ballXFromYard(s.ballOn, s.possession);
+      const from = { x: FB.ball.position.x, z: endZ };
+      const to = { x: losX, z: s.spotZ };
+      const next = () => FB.setupPlay('pass');
+      if (FB.startRefSpot) FB.startRefSpot(from, to, next);
+      else setTimeout(next, 700);
     }
   };
 

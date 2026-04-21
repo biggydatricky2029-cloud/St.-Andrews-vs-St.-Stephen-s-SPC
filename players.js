@@ -429,23 +429,34 @@
     for (const k of ['home','away']) for (const e of FB.activePlayers[k]) { e.mesh.visible = false; e.isDown = false; }
   };
 
+  // Offset formations by s.spotZ so the line of scrimmage straddles the hash
+  // when the previous play ended outside the hashes.
+  function zOffsetForFormation() {
+    const zOff = (FB.state && FB.state.spotZ) || 0;
+    const half = FB.const.FIELD_WID / 2 - 2;
+    return { zOff, half };
+  }
   FB.spawnOffense = function (teamKey, losX) {
     const dir = FB.forwardDir(teamKey);
     const form = FB.offenseFormation(losX, dir);
+    const { zOff, half } = zOffsetForFormation();
     for (const spot of form) {
       const ent = FB.getStarter(teamKey, spot.slot);
       if (!ent) continue;
-      FB.placePlayer(ent, spot.x, spot.z, spot.slot);
+      const sz = Math.max(-half, Math.min(half, spot.z + zOff));
+      FB.placePlayer(ent, spot.x, sz, spot.slot);
       if (spot.slot === 'QB') FB.qb = ent;
     }
   };
   FB.spawnDefense = function (teamKey, losX) {
     const dir = FB.forwardDir(teamKey);
     const form = FB.defenseFormation(losX, dir);
+    const { zOff, half } = zOffsetForFormation();
     for (const spot of form) {
       const ent = FB.getStarter(teamKey, spot.slot);
       if (!ent) continue;
-      FB.placePlayer(ent, spot.x, spot.z, spot.slot);
+      const sz = Math.max(-half, Math.min(half, spot.z + zOff));
+      FB.placePlayer(ent, spot.x, sz, spot.slot);
     }
   };
 

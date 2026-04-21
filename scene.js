@@ -5,7 +5,7 @@ window.FB = window.FB || {};
 (function (FB) {
   'use strict';
 
-  FB.const = { FIELD_LEN: 120, FIELD_WID: 53.3, EZ: 10 };
+  FB.const = { FIELD_LEN: 120, FIELD_WID: 53.3, EZ: 10, HASH_Z: 6 };
 
   FB.state = {
     phase: 'pregame',
@@ -24,6 +24,7 @@ window.FB = window.FB || {};
     userTendencies: { run: 0, pass: 0, left: 0, right: 0, recentPlays: [] },
     gameStats: { home: {}, away: {} },
     log: [],
+    spotZ: 0,
   };
   FB.diffMult = { freshman: 0.86, jv: 1.05, varsity: 1.27, allspc: 1.45, easy: 0.88, normal: 1.10, hard: 1.27 };
   FB.diffLabels = { freshman: 'FRESHMAN', jv: 'JV', varsity: 'VARSITY', allspc: 'ALL SPC' };
@@ -41,6 +42,14 @@ window.FB = window.FB || {};
     return possession === 'home' ? x + 50 : 50 - x;
   };
   FB.forwardDir = function (possession) { return possession === 'home' ? 1 : -1; };
+
+  // Clamp a lateral Z to the hash marks — tackled outside a hash spots on it.
+  FB.computeSpotZ = function (endZ) {
+    const H = FB.const.HASH_Z;
+    if (endZ > H) return H;
+    if (endZ < -H) return -H;
+    return endZ;
+  };
 
   // ---- Three.js ----
   FB.initThree = function () {
@@ -196,7 +205,77 @@ window.FB = window.FB || {};
     FB.losLine = new THREE.Mesh(new THREE.PlaneGeometry(0.35, FIELD_WID),
       new THREE.MeshBasicMaterial({ color: 0x4cc9f0, transparent: true, opacity: 0.55, polygonOffset: true, polygonOffsetFactor: -4 }));
     FB.losLine.rotation.x = -Math.PI / 2; FB.losLine.position.y = 0.04; group.add(FB.losLine);
+
+    createReferee();
   }
+
+  // Zebra-striped referee who carries the ball between plays.
+  function zebraStripeTex() {
+    const c = document.createElement('canvas'); c.width = 64; c.height = 64;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, 64, 64);
+    ctx.fillStyle = '#111111';
+    for (let i = 0; i < 8; i++) ctx.fillRect(i * 8, 0, 4, 64);
+    const t = new THREE.CanvasTexture(c); return t;
+  }
+  function createReferee() {
+    const ref = new THREE.Group();
+    const torso = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.45, 0.5, 1.2, 10),
+      new THREE.MeshLambertMaterial({ map: zebraStripeTex() })
+    );
+    torso.position.y = 1.6; ref.add(torso);
+    const head = new THREE.Mesh(
+      new THREE.SphereGeometry(0.3, 10, 8),
+      new THREE.MeshLambertMaterial({ color: 0xf4c89b })
+    );
+    head.position.y = 2.45; ref.add(head);
+    const cap = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.32, 0.32, 0.18, 10),
+      new THREE.MeshLambertMaterial({ color: 0x111111 })
+    );
+    cap.position.y = 2.72; ref.add(cap);
+    const pants = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.4, 0.35, 1.2, 10),
+      new THREE.MeshLambertMaterial({ color: 0x1a1a1a })
+    );
+    pants.position.y = 0.6; ref.add(pants);
+    ref.visible = false;
+    FB.scene.add(ref);
+    FB.referee = ref;
+  }
+
+  // Referee walks the ball from `from` to `to`, then hides and fires `cb`.
+  // Used after every tackle/OOB so the ball visibly gets spotted on the hash.
+  FB.startRefSpot = function (from, to, cb) {
+    if (!FB.referee) { if (cb) cb(); return; }
+    FB.referee.visible = true;
+    FB.referee.position.set(from.x, 0, from.z);
+    FB.ballState.carried = false;
+    FB.ballState.inAir = false;
+    FB.ballCarrier = null;
+    FB.ball.position.set(from.x, 2.1, from.z + 0.35);
+    FB.refState = { fx: from.x, fz: from.z, tx: to.x, tz: to.z, t: 0, dur: 0.9, cb };
+  };
+
+  FB.updateRefAnim = function (dt) {
+    const r = FB.refState;
+    if (!r) return;
+    r.t += dt;
+    const p = Math.min(1, r.t / r.dur);
+    const x = r.fx + (r.tx - r.fx) * p;
+    const z = r.fz + (r.tz - r.fz) * p;
+    FB.referee.position.set(x, 0, z);
+    const dx = r.tx - r.fx, dz = r.tz - r.fz;
+    if (dx * dx + dz * dz > 0.0001) FB.referee.rotation.y = Math.atan2(dx, dz);
+    FB.ball.position.set(x, 2.1, z + 0.35);
+    if (p >= 1) {
+      FB.referee.visible = false;
+      const cb = r.cb;
+      FB.refState = null;
+      if (cb) cb();
+    }
+  };
 
   function createStadium() {
     const g = new THREE.Group(); FB.scene.add(g);

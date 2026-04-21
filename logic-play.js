@@ -291,41 +291,54 @@
   }
   FB.recordStat = recordStat;
 
-  // End play and spot the ball.
+  // End play and spot the ball. A referee then walks the ball to the nearest
+  // hash mark (only clamped when tackled beyond a hash) before the next play.
   FB.endPlay = function (opts) {
     const s = FB.state;
     if (s.phase === 'deadball' || s.phase === 'gameover') return;
     s.phase = 'deadball';
     let gain = 0;
     let newBallOn = s.ballOn;
+    let endZ = 0;
 
     if (FB.ballCarrier) {
       const yardNow = FB.yardFromBallX(FB.ballCarrier.mesh.position.x, s.possession);
       gain = Math.round(yardNow - s.los);
       newBallOn = Math.max(1, Math.min(99, Math.round(yardNow)));
+      endZ = FB.ballCarrier.mesh.position.z;
       recordRushReceiveStats(FB.ballCarrier, gain);
       if (yardNow >= 100) {
         FB.scoreTouchdown();
         return;
       }
     } else {
-      // Incomplete pass
       gain = 0; newBallOn = s.ballOn;
+      endZ = FB.ball ? FB.ball.position.z : 0;
       FB.state.log.push('Incomplete.');
     }
 
     s.ballOn = newBallOn;
+    s.spotZ = FB.computeSpotZ ? FB.computeSpotZ(endZ) : 0;
 
-    // Kickoff returns always end in a fresh 1st & 10 regardless of return yards.
-    if (FB.specialMode === 'kickoff') {
-      FB.specialMode = null;
-      s.los = s.ballOn; s.down = 1; s.distance = 10;
-      FB.state.log.push('Return spotted at ' + s.ballOn);
-      setTimeout(() => FB.setupPlay('pass'), 700);
-      return;
-    }
+    const losX = FB.ballXFromYard(s.ballOn, s.possession);
+    const fromPos = FB.ball
+      ? { x: FB.ball.position.x, z: FB.ball.position.z }
+      : { x: losX, z: endZ };
+    const toPos = { x: losX, z: s.spotZ };
 
-    FB.advanceDown(gain);
+    const afterRef = () => {
+      if (FB.specialMode === 'kickoff') {
+        FB.specialMode = null;
+        s.los = s.ballOn; s.down = 1; s.distance = 10;
+        FB.state.log.push('Return spotted at ' + s.ballOn);
+        FB.setupPlay('pass');
+        return;
+      }
+      FB.advanceDown(gain);
+    };
+
+    if (FB.startRefSpot) FB.startRefSpot(fromPos, toPos, afterRef);
+    else setTimeout(afterRef, 700);
   };
 
   function recordRushReceiveStats(bc, gain) {
