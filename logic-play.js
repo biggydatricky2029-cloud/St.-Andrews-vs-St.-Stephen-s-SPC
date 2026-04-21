@@ -22,19 +22,33 @@
     } else {
       // Pick plays: user picks one side, AI picks the other.
       const userOff = s.possession === FB.userTeam;
+      const pickAI = (side) => {
+        try { if (typeof FB.pickAIPlay === 'function') return FB.pickAIPlay(side); }
+        catch (_) {}
+        const list = (FB.PLAYBOOK && FB.PLAYBOOK[side]) || [];
+        return list[Math.floor(Math.random() * list.length)] || list[0] || null;
+      };
+      const openPicker = (side) => {
+        if (typeof FB.openPlayPicker === 'function') {
+          FB.openPlayPicker(side, () => finalizePlaySetup(losX));
+        } else {
+          // No picker available — use current selections and spawn.
+          finalizePlaySetup(losX);
+        }
+      };
       try {
         if (userOff) {
-          FB.selectedPlay.defense = FB.pickAIPlay('defense');
-          FB.openPlayPicker('offense', () => finalizePlaySetup(losX));
+          FB.selectedPlay.defense = pickAI('defense') || FB.selectedPlay.defense || (FB.PLAYBOOK && FB.PLAYBOOK.defense && FB.PLAYBOOK.defense[0]);
+          openPicker('offense');
         } else {
-          FB.selectedPlay.offense = FB.pickAIPlay('offense');
-          FB.openPlayPicker('defense', () => finalizePlaySetup(losX));
+          FB.selectedPlay.offense = pickAI('offense') || FB.selectedPlay.offense || (FB.PLAYBOOK && FB.PLAYBOOK.offense && FB.PLAYBOOK.offense[0]);
+          openPicker('defense');
         }
       } catch (e) {
         FB.flashWarn && FB.flashWarn('setupPlay err: ' + (e && e.message ? e.message : e));
         // Last-resort: skip the picker and spawn with defaults so the game keeps going.
-        if (!FB.selectedPlay.offense) FB.selectedPlay.offense = FB.PLAYBOOK.offense[0];
-        if (!FB.selectedPlay.defense) FB.selectedPlay.defense = FB.PLAYBOOK.defense[0];
+        if (!FB.selectedPlay.offense) FB.selectedPlay.offense = FB.PLAYBOOK && FB.PLAYBOOK.offense && FB.PLAYBOOK.offense[0];
+        if (!FB.selectedPlay.defense) FB.selectedPlay.defense = FB.PLAYBOOK && FB.PLAYBOOK.defense && FB.PLAYBOOK.defense[0];
         finalizePlaySetup(losX);
       }
       return; // finalize when user confirms (or via fallback above)
