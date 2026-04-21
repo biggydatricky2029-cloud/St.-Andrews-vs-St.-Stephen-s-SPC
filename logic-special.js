@@ -21,7 +21,7 @@
     // Evenly spaced Z positions from -26 to +26 (field width ~53.3).
     const lineZs = [-26, -20.8, -15.6, -10.4, -5.2, 0, 5.2, 10.4, 15.6, 20.8, 26];
     const kicker = FB.getStarter(kickingTeam, 'K');
-    if (kicker) FB.placePlayer(kicker, losX, 0, 'K');
+    if (kicker) { FB.placePlayer(kicker, losX, 0, 'K'); kicker._koLaneZ = 0; }
     FB.kickMeterFrom = kicker;
     if (kicker) {
       FB.attachBallTo(kicker);
@@ -36,6 +36,9 @@
       const ent = FB.getStarter(kickingTeam, coverRoles[i]);
       if (!ent || ent === kicker) continue;
       FB.placePlayer(ent, losX, coverZs[i], coverRoles[i]);
+      // Remember the lane this coverage player started in so outside defenders
+      // hold their width until they're close enough to converge on the returner.
+      ent._koLaneZ = coverZs[i];
     }
 
     // --- Returner at own 15 (deep). ---
@@ -154,7 +157,9 @@
   }
 
   // Called while the ball is in the air on a kickoff — sprints coverage down
-  // the field so they close on the returner quickly.
+  // the field so they close on the returner quickly. Outside lanes stay wide
+  // until they're close to the landing spot so the returner gets surrounded
+  // rather than chased single-file.
   FB.updateKickoffCoverage = function (dt) {
     if (FB.specialMode !== 'kickoff') return;
     const s = FB.state;
@@ -165,9 +170,18 @@
     for (const e of FB.activePlayers[kickingTeam]) {
       if (!e.mesh.visible || e === FB.kickMeterFrom) continue;
       if (!FB.DEF_SLOTS.includes(e.role)) continue;
-      const tgt = ballPos
-        ? new THREE.Vector3(ballPos.x - dir * 2, 0, ballPos.z * 0.6 + e.mesh.position.z * 0.4)
-        : new THREE.Vector3(e.mesh.position.x + dir * 30, 0, e.mesh.position.z);
+      const laneZ = (typeof e._koLaneZ === 'number') ? e._koLaneZ : e.mesh.position.z;
+      let tgt;
+      if (ballPos) {
+        const dxToBall = Math.abs(ballPos.x - e.mesh.position.x);
+        // Stay in-lane while still far downfield (>25yd); start pinching inward
+        // as we close on the landing spot (0yd = fully on the ball).
+        const laneHold = Math.max(0, Math.min(1, (dxToBall - 6) / 20));
+        const zTarget = ballPos.z * (1 - laneHold) + laneZ * laneHold;
+        tgt = new THREE.Vector3(ballPos.x - dir * 2, 0, zTarget);
+      } else {
+        tgt = new THREE.Vector3(e.mesh.position.x + dir * 30, 0, laneZ);
+      }
       FB.steerToward(e, tgt, dt, 1.10);
     }
     // Blockers drift upfield to meet coverage.
@@ -239,12 +253,14 @@
     FB.ballState.inAir = false;
     FB.state.log.push('Kickoff fielded by #' + catcher.player.number);
 
-    // Coverage swarms the returner: wipe any prior assignments so defenders pursue.
+    // Coverage swarms the returner. Outside lanes keep their width so the
+    // pursuit surrounds rather than stacks; inside lanes converge directly.
     for (const e of FB.activePlayers[kickingTeam]) {
       if (!e.mesh.visible) continue;
-      e.assignment = { type: 'rush' };
+      const laneZ = (typeof e._koLaneZ === 'number') ? e._koLaneZ : e.mesh.position.z;
+      e.assignment = { type: 'koCover', laneZ: laneZ };
     }
-    // Ensure the kicker also chases.
+    // Kicker comes straight at the ball (no lane bias — he's the trail man).
     if (FB.kickMeterFrom) FB.kickMeterFrom.assignment = { type: 'rush' };
 
     // If the defense is the user's team, hand them the closest chaser.

@@ -134,6 +134,17 @@
         if (!a || a.type === 'rush' || a.type === 'blitz') {
           target = carrier && FB.ballState.carried ? carrier.mesh.position.clone()
                  : FB.ball ? FB.ball.position.clone() : new THREE.Vector3(losX, 0, ent.mesh.position.z);
+        } else if (a.type === 'koCover') {
+          // Kickoff pursuit: hold outside lane Z while far from the carrier,
+          // then pinch in as we close so the returner gets surrounded.
+          const car = carrier && FB.ballState.carried ? carrier.mesh.position : (FB.ball ? FB.ball.position : null);
+          if (car) {
+            const dxToCar = Math.abs(car.x - ent.mesh.position.x);
+            const laneHold = Math.max(0, Math.min(1, (dxToCar - 4) / 16));
+            target = new THREE.Vector3(car.x, 0, car.z * (1 - laneHold) + a.laneZ * laneHold);
+          } else {
+            target = new THREE.Vector3(ent.mesh.position.x + dir * 10, 0, a.laneZ);
+          }
         } else if (a.type === 'zone') {
           const zx = losX + (a.depth || 0) * dir;
           const zz = a.lateral || 0;
