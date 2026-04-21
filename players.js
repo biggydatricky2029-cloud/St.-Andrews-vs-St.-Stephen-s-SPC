@@ -75,49 +75,64 @@
     const g = new THREE.Group();
     const pantsMat = new THREE.MeshLambertMaterial({ color: secondary });
 
-    // --- Feet / cleats (pointed forward = +Z; hip spread along X). ---
+    // --- Legs with hip + knee pivots so they can swing and bend. ---
+    // Each leg is a chain: hipPivot (at hip joint) -> thigh + kneePivot.
+    // kneePivot (at knee joint) -> knee ball + sock + calf + foot.
+    // Body front is +Z local; rotating a pivot's X axis swings fwd/back.
     const footL = 0.42, footW = 0.22, footH = 0.1;
     const hipX = 0.22 * girth;
-    for (const dx of [-hipX, hipX]) {
-      const foot = new THREE.Mesh(new THREE.BoxGeometry(footW, footH, footL), cleatMat);
-      foot.position.set(dx, footH / 2, 0.06);
-      foot.castShadow = true;
-      g.add(foot);
-    }
-
-    // --- Legs: ankle, calf, knee, thigh (tapered), hips on X axis. ---
     const ankleY = footH;
     const calfH = 0.68, thighH = 0.84;
     const kneeY = ankleY + calfH;
     const thighTopY = kneeY + thighH;
     const calfR = 0.17 * girth;
     const thighRTop = 0.22 * girth, thighRBot = 0.19 * girth;
-    for (const dx of [-hipX, hipX]) {
-      const sock = new THREE.Mesh(
-        new THREE.CylinderGeometry(calfR * 0.95, calfR * 0.9, 0.22, 10),
-        sockMat
-      );
-      sock.position.set(dx, ankleY + 0.11, 0);
-      sock.castShadow = true;
-      g.add(sock);
-      const calf = new THREE.Mesh(
-        new THREE.CylinderGeometry(calfR * 1.05, calfR * 0.95, calfH - 0.22, 10),
-        skinMat
-      );
-      calf.position.set(dx, ankleY + 0.22 + (calfH - 0.22) / 2, 0);
-      calf.castShadow = true;
-      g.add(calf);
-      const knee = new THREE.Mesh(new THREE.SphereGeometry(calfR * 1.1, 10, 8), pantsMat);
-      knee.position.set(dx, kneeY, 0);
-      knee.castShadow = true;
-      g.add(knee);
+    const rigLegs = {};
+    for (const side of ['L', 'R']) {
+      const dx = side === 'L' ? -hipX : hipX;
+      const hipPivot = new THREE.Group();
+      hipPivot.position.set(dx, thighTopY, 0);
+      g.add(hipPivot);
+
       const thigh = new THREE.Mesh(
         new THREE.CylinderGeometry(thighRTop, thighRBot, thighH, 10),
         pantsMat
       );
-      thigh.position.set(dx, kneeY + thighH / 2, 0);
+      thigh.position.set(0, -thighH / 2, 0);
       thigh.castShadow = true;
-      g.add(thigh);
+      hipPivot.add(thigh);
+
+      const kneePivot = new THREE.Group();
+      kneePivot.position.set(0, -thighH, 0);
+      hipPivot.add(kneePivot);
+
+      const knee = new THREE.Mesh(new THREE.SphereGeometry(calfR * 1.1, 10, 8), pantsMat);
+      knee.position.set(0, 0, 0);
+      knee.castShadow = true;
+      kneePivot.add(knee);
+
+      const sock = new THREE.Mesh(
+        new THREE.CylinderGeometry(calfR * 0.95, calfR * 0.9, 0.22, 10),
+        sockMat
+      );
+      sock.position.set(0, 0.11 - calfH, 0);
+      sock.castShadow = true;
+      kneePivot.add(sock);
+
+      const calf = new THREE.Mesh(
+        new THREE.CylinderGeometry(calfR * 1.05, calfR * 0.95, calfH - 0.22, 10),
+        skinMat
+      );
+      calf.position.set(0, 0.11 - calfH / 2, 0);
+      calf.castShadow = true;
+      kneePivot.add(calf);
+
+      const foot = new THREE.Mesh(new THREE.BoxGeometry(footW, footH, footL), cleatMat);
+      foot.position.set(0, -calfH - footH / 2, 0.06);
+      foot.castShadow = true;
+      kneePivot.add(foot);
+
+      rigLegs[side] = { hip: hipPivot, knee: kneePivot };
     }
 
     // --- Pelvis / hip pad + belt ---
@@ -190,42 +205,64 @@
       g.add(cap);
     }
 
-    // --- Arms: sleeve + bicep + elbow + forearm + glove ---
+    // --- Arms with shoulder + elbow pivots so arms can swing and elbow can
+    //     stay bent ~90° pointing opposite of motion.
     const armMat = new THREE.MeshLambertMaterial({ color: primary });
     const upperLen = 0.6;
     const foreLen = 0.55;
     const armR = 0.135 * girth;
-    for (const sgn of [-1, 1]) {
+    const rigArms = {};
+    for (const side of ['L', 'R']) {
+      const sgn = side === 'L' ? -1 : 1;
       const shoulderX = sgn * (shoulderSpan / 2);
       const shoulderY = padsY - 0.12;
+
+      const shoulderPivot = new THREE.Group();
+      shoulderPivot.position.set(shoulderX, shoulderY, 0);
+      g.add(shoulderPivot);
+
       const sleeve = new THREE.Mesh(
         new THREE.CylinderGeometry(armR * 1.08, armR * 0.95, upperLen * 0.45, 10),
         armMat
       );
-      sleeve.position.set(shoulderX, shoulderY - upperLen * 0.22, 0);
+      sleeve.position.set(0, -upperLen * 0.22, 0);
       sleeve.castShadow = true;
-      g.add(sleeve);
+      shoulderPivot.add(sleeve);
+
       const bicep = new THREE.Mesh(
         new THREE.CylinderGeometry(armR * 0.95, armR * 0.82, upperLen * 0.6, 10),
         skinMat
       );
-      bicep.position.set(shoulderX, shoulderY - upperLen * 0.75, 0);
+      bicep.position.set(0, -upperLen * 0.75, 0);
       bicep.castShadow = true;
-      g.add(bicep);
+      shoulderPivot.add(bicep);
+
+      const elbowPivot = new THREE.Group();
+      elbowPivot.position.set(0, -upperLen - 0.02, 0);
+      shoulderPivot.add(elbowPivot);
+
       const elbow = new THREE.Mesh(new THREE.SphereGeometry(armR * 0.92, 8, 6), skinMat);
-      elbow.position.set(shoulderX, shoulderY - upperLen - 0.02, 0);
-      g.add(elbow);
+      elbow.position.set(0, 0, 0);
+      elbowPivot.add(elbow);
+
       const fore = new THREE.Mesh(
         new THREE.CylinderGeometry(armR * 0.82, armR * 0.66, foreLen, 10),
         skinMat
       );
-      fore.position.set(shoulderX, shoulderY - upperLen - 0.02 - foreLen / 2, 0);
+      fore.position.set(0, -foreLen / 2, 0);
       fore.castShadow = true;
-      g.add(fore);
+      elbowPivot.add(fore);
+
       const glove = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.28, 0.2), gloveMat);
-      glove.position.set(shoulderX, shoulderY - upperLen - foreLen - 0.14, 0);
+      glove.position.set(0, -foreLen - 0.12, 0);
       glove.castShadow = true;
-      g.add(glove);
+      elbowPivot.add(glove);
+
+      // Hold the elbow at a constant ~90° bend so the forearm points forward
+      // and the elbow joint points behind the body (opposite of +Z motion).
+      elbowPivot.rotation.x = -Math.PI / 2;
+
+      rigArms[side] = { shoulder: shoulderPivot, elbow: elbowPivot };
     }
 
     // --- Neck + head (skin under helmet) ---
@@ -306,6 +343,13 @@
       assignment: null, isDown: false, route: null,
       jukeCooldown: 0,
       carryY,
+      rig: {
+        hipL: rigLegs.L.hip, hipR: rigLegs.R.hip,
+        kneeL: rigLegs.L.knee, kneeR: rigLegs.R.knee,
+        shoulderL: rigArms.L.shoulder, shoulderR: rigArms.R.shoulder,
+        elbowL: rigArms.L.elbow, elbowR: rigArms.R.elbow,
+      },
+      gaitPhase: 0,
     };
   }
 
