@@ -262,4 +262,49 @@
     }
   };
 
+  // Per-frame joint animation: legs and arms swing with an opposite-side
+  // gait (right arm forward = left leg forward); knees flex during back-
+  // swing so the knee bulges in the direction of motion; elbows are held
+  // at ~90° with the elbow joint pointing opposite the motion direction.
+  FB.updatePlayerRigs = function (dt) {
+    for (const team of ['home', 'away']) {
+      for (const ent of FB.activePlayers[team]) {
+        const rig = ent.rig;
+        if (!rig || !ent.mesh.visible) continue;
+        if (ent.isDown) {
+          // Collapse to neutral while tackled/flat.
+          rig.hipL.rotation.x *= 0.7; rig.hipR.rotation.x *= 0.7;
+          rig.kneeL.rotation.x *= 0.7; rig.kneeR.rotation.x *= 0.7;
+          rig.shoulderL.rotation.x *= 0.7; rig.shoulderR.rotation.x *= 0.7;
+          continue;
+        }
+        const speed = Math.hypot(ent.vel.x, ent.vel.z);
+        const rate = 4 + speed * 1.1; // radians per second of phase advance
+        ent.gaitPhase = (ent.gaitPhase || 0) + dt * rate;
+        // Swing amplitude scales with speed (but fades near stationary).
+        const swingAmp = Math.min(0.9, 0.08 + speed * 0.07);
+        const s = Math.sin(ent.gaitPhase);
+        // Hips: right leg forward when sin > 0 means foot goes back (hip +x),
+        // so flip sign so sin>0 → right leg forward.
+        const hipR = -s * swingAmp;
+        const hipL = s * swingAmp;
+        rig.hipR.rotation.x = hipR;
+        rig.hipL.rotation.x = hipL;
+        // Shoulders opposite the same-side leg (right arm with left leg).
+        rig.shoulderR.rotation.x = -hipR; // opposite right leg
+        rig.shoulderL.rotation.x = -hipL;
+        // Knee bend: bend when leg is on its back-swing (hip positive X).
+        const bendAmp = Math.min(1.1, 0.2 + speed * 0.09);
+        rig.kneeR.rotation.x = -Math.max(0, rig.hipR.rotation.x) * bendAmp * 1.6
+                               - Math.max(0, -rig.hipR.rotation.x) * bendAmp * 0.6;
+        rig.kneeL.rotation.x = -Math.max(0, rig.hipL.rotation.x) * bendAmp * 1.6
+                               - Math.max(0, -rig.hipL.rotation.x) * bendAmp * 0.6;
+        // Elbows stay at ~90° but add a tiny drive with the gait so they
+        // pump naturally. (Base -PI/2 set at construction.)
+        rig.elbowR.rotation.x = -Math.PI / 2 - Math.max(0, -hipR) * 0.25;
+        rig.elbowL.rotation.x = -Math.PI / 2 - Math.max(0, -hipL) * 0.25;
+      }
+    }
+  };
+
 })(window.FB);
