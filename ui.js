@@ -633,7 +633,22 @@
   }
 
   // ---- Bootstrap ----
+  const BUILD_TAG = 'BUILD-20260421d';
+  function paintVersionTag() {
+    try {
+      const host = document.body;
+      if (!host) return;
+      const tag = document.createElement('div');
+      tag.textContent = BUILD_TAG;
+      tag.style.cssText = 'position:fixed;left:6px;bottom:6px;z-index:99999;background:rgba(0,0,0,0.7);color:#4cc9f0;font:10px/1.2 monospace;padding:3px 6px;border-radius:4px;pointer-events:none;';
+      host.appendChild(tag);
+    } catch (_) {}
+  }
+
   async function start() {
+    paintVersionTag();
+    // Install playbook stub immediately so nothing downstream crashes on it.
+    try { ensurePlaybook(); } catch (_) {}
     try { await loadRosters(); }
     catch (e) { alert('Failed to load roster.json: ' + e.message); return; }
     renderPreGame();
