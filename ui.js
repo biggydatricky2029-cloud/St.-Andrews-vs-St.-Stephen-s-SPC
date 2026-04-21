@@ -313,9 +313,15 @@
     for (const p of slice) {
       const card = document.createElement('div');
       card.className = 'play-card' + (FB.selectedPlay[ppSide] && FB.selectedPlay[ppSide].id === p.id ? ' active' : '');
+      let diagram = '';
+      try { diagram = buildPlayDiagramSVG(p, ppSide); }
+      catch (e) {
+        FB.flashWarn && FB.flashWarn('Diagram err: ' + (e && e.message ? e.message : e));
+        diagram = '<div class="play-card-diagram-fallback">' + escapeHtml(p.notes || '') + '</div>';
+      }
       card.innerHTML =
         '<div class="play-card-title">' + escapeHtml(p.name.toUpperCase()) + '</div>'
-        + '<div class="play-card-diagram-wrap">' + buildPlayDiagramSVG(p, ppSide) + '</div>';
+        + '<div class="play-card-diagram-wrap">' + diagram + '</div>';
       card.addEventListener('click', () => {
         FB.selectedPlay[ppSide] = p;
         renderPlayList();

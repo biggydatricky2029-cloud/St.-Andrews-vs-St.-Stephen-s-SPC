@@ -327,14 +327,20 @@
     const toPos = { x: losX, z: s.spotZ };
 
     const afterRef = () => {
-      if (FB.specialMode === 'kickoff') {
-        FB.specialMode = null;
-        s.los = s.ballOn; s.down = 1; s.distance = 10;
-        FB.state.log.push('Return spotted at ' + s.ballOn);
-        FB.setupPlay('pass');
-        return;
+      try {
+        if (FB.specialMode === 'kickoff') {
+          FB.specialMode = null;
+          s.los = s.ballOn; s.down = 1; s.distance = 10;
+          FB.state.log.push('Return spotted at ' + s.ballOn);
+          FB.setupPlay('pass');
+          return;
+        }
+        FB.advanceDown(gain);
+      } catch (err) {
+        FB.flashWarn && FB.flashWarn('afterRef err: ' + (err && err.message ? err.message : err));
+        // Keep the game moving — force the next snap even if something broke above.
+        setTimeout(() => { try { FB.setupPlay && FB.setupPlay('pass'); } catch (_) {} }, 400);
       }
-      FB.advanceDown(gain);
     };
 
     if (FB.startRefSpot) FB.startRefSpot(fromPos, toPos, afterRef);

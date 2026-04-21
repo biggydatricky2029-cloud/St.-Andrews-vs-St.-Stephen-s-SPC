@@ -261,6 +261,7 @@
 
     FB.attachBallTo(catcher);
     FB.ballState.inAir = false;
+    FB.playTicker = 0;
     FB.state.log.push('Kickoff fielded by #' + catcher.player.number);
 
     // Coverage swarms the returner. Outside lanes keep their width so the

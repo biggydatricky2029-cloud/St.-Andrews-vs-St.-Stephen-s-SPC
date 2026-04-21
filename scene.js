@@ -269,7 +269,19 @@ window.FB = window.FB || {};
       sx: stepX, sz: stepZ,
       durWalk: 0.9, durPlace: 0.35, durStep: 0.7,
       cb,
+      fired: false,
     };
+    // Hard fallback: even if the animation path somehow stalls, fire the
+    // callback so the game never freezes waiting on the referee.
+    const stateRef = FB.refState;
+    setTimeout(() => {
+      if (stateRef && !stateRef.fired) {
+        stateRef.fired = true;
+        FB.referee.visible = false;
+        if (FB.refState === stateRef) FB.refState = null;
+        if (cb) { try { cb(); } catch (e) { FB.flashWarn && FB.flashWarn('Ref fallback err: ' + (e && e.message ? e.message : e)); } }
+      }
+    }, 2500);
   };
 
   FB.updateRefAnim = function (dt) {
@@ -306,11 +318,22 @@ window.FB = window.FB || {};
       FB.referee.position.set(x, 0, z);
       const dx = r.sx - r.tx, dz = r.sz - r.tz;
       if (dx * dx + dz * dz > 0.0001) FB.referee.rotation.y = Math.atan2(dx, dz);
-      if (p >= 1) {
+      if (p >= 1 && !r.fired) {
+        r.fired = true;
         FB.referee.visible = false;
         const cb = r.cb;
         FB.refState = null;
-        if (cb) cb();
+        if (cb) {
+          try { cb(); }
+          catch (err) {
+            FB.flashWarn && FB.flashWarn('Ref cb err: ' + (err && err.message ? err.message : err));
+            // Don't leave the game frozen — hide players and offer a fallback play picker.
+            setTimeout(() => {
+              try { FB.hideAllPlayers && FB.hideAllPlayers(); FB.setupPlay && FB.setupPlay('pass'); }
+              catch (_) {}
+            }, 400);
+          }
+        }
       }
     }
   };
