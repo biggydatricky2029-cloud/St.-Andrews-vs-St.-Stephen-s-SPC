@@ -22,15 +22,22 @@
     } else {
       // Pick plays: user picks one side, AI picks the other.
       const userOff = s.possession === FB.userTeam;
-      if (userOff) {
-        FB.selectedPlay.defense = FB.pickAIPlay('defense');
-        FB.openPlayPicker('offense', () => finalizePlaySetup(losX));
-        return; // finalize when user confirms
-      } else {
-        FB.selectedPlay.offense = FB.pickAIPlay('offense');
-        FB.openPlayPicker('defense', () => finalizePlaySetup(losX));
-        return;
+      try {
+        if (userOff) {
+          FB.selectedPlay.defense = FB.pickAIPlay('defense');
+          FB.openPlayPicker('offense', () => finalizePlaySetup(losX));
+        } else {
+          FB.selectedPlay.offense = FB.pickAIPlay('offense');
+          FB.openPlayPicker('defense', () => finalizePlaySetup(losX));
+        }
+      } catch (e) {
+        FB.flashWarn && FB.flashWarn('setupPlay err: ' + (e && e.message ? e.message : e));
+        // Last-resort: skip the picker and spawn with defaults so the game keeps going.
+        if (!FB.selectedPlay.offense) FB.selectedPlay.offense = FB.PLAYBOOK.offense[0];
+        if (!FB.selectedPlay.defense) FB.selectedPlay.defense = FB.PLAYBOOK.defense[0];
+        finalizePlaySetup(losX);
       }
+      return; // finalize when user confirms (or via fallback above)
     }
     FB.updateButtonStates && FB.updateButtonStates();
     FB.updateHUD && FB.updateHUD();
@@ -44,6 +51,10 @@
     s.playType = off.type === 'run' ? 'run' : 'pass';
     FB.spawnOffense(s.possession, losX);
     FB.spawnDefense(defTeam, losX);
+    if (!FB.qb) {
+      FB.flashWarn && FB.flashWarn('No QB found for ' + s.possession);
+      return;
+    }
     FB.attachBallTo(FB.qb);
     FB.ball.position.copy(FB.qb.mesh.position).add(new THREE.Vector3(0, FB.qb.carryY || 2.2, 0.3));
 

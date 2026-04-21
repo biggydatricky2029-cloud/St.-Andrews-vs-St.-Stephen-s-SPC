@@ -291,15 +291,41 @@
   }
 
   FB.openPlayPicker = function (side, cb) {
+    // Surface the picker modal first so a render error below can't hide it.
+    const modal = document.getElementById('playPicker');
+    if (modal) modal.classList.remove('hidden');
     ppSide = side || (userIsOffense() ? 'offense' : 'defense');
     ppCallback = cb || null;
-    document.getElementById('playPickerTitle').textContent = side === 'offense' ? 'PICK AN OFFENSIVE PLAY' : 'PICK A DEFENSIVE PLAY';
-    // Sync tabs
-    document.querySelectorAll('.pp-tab').forEach(t => t.classList.toggle('active', t.dataset.pp === ppSide));
-    if (!FB.selectedPlay[ppSide]) FB.selectedPlay[ppSide] = FB.PLAYBOOK[ppSide][0];
-    ppPage[ppSide] = 0;
-    renderPlayList();
-    document.getElementById('playPicker').classList.remove('hidden');
+    try {
+      const titleEl = document.getElementById('playPickerTitle');
+      if (titleEl) titleEl.textContent = ppSide === 'offense' ? 'PICK AN OFFENSIVE PLAY' : 'PICK A DEFENSIVE PLAY';
+      // Sync tabs
+      document.querySelectorAll('.pp-tab').forEach(t => t.classList.toggle('active', t.dataset.pp === ppSide));
+      if (!FB.PLAYBOOK || !FB.PLAYBOOK[ppSide] || !FB.PLAYBOOK[ppSide].length) {
+        FB.flashWarn && FB.flashWarn('Playbook missing for ' + ppSide);
+        return;
+      }
+      if (!FB.selectedPlay[ppSide]) FB.selectedPlay[ppSide] = FB.PLAYBOOK[ppSide][0];
+      ppPage[ppSide] = 0;
+      renderPlayList();
+    } catch (e) {
+      FB.flashWarn && FB.flashWarn('Picker err: ' + (e && e.message ? e.message : e));
+      // Emergency fallback: a minimal list of play names so the user can still confirm.
+      try {
+        const list = document.getElementById('playList');
+        if (list && FB.PLAYBOOK && FB.PLAYBOOK[ppSide]) {
+          list.innerHTML = '';
+          const plays = FB.PLAYBOOK[ppSide].slice(0, 6);
+          for (const p of plays) {
+            const card = document.createElement('div');
+            card.className = 'play-card' + (FB.selectedPlay[ppSide] && FB.selectedPlay[ppSide].id === p.id ? ' active' : '');
+            card.innerHTML = '<div class="play-card-title">' + escapeHtml(p.name.toUpperCase()) + '</div>';
+            card.addEventListener('click', () => { FB.selectedPlay[ppSide] = p; });
+            list.appendChild(card);
+          }
+        }
+      } catch (_) {}
+    }
   };
 
   function renderPlayList() {
