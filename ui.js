@@ -305,6 +305,85 @@
     return FB.state.possession === FB.userTeam;
   }
 
+  function ensurePlaybook() {
+    // If playbook.js never loaded (cache, network), synthesize a minimal
+    // 6-play book so the picker is always usable and the game can proceed.
+    if (FB.PLAYBOOK && FB.PLAYBOOK.offense && FB.PLAYBOOK.offense.length
+        && FB.PLAYBOOK.defense && FB.PLAYBOOK.defense.length) return;
+    FB.flashWarn && FB.flashWarn('Using stub playbook (playbook.js did not load)');
+    const R = (dx, dz) => [{ dx: 2, dz: 0 }, { dx: dx, dz: dz }];
+    const offStub = [
+      { id: 'stub_slant',   name: 'Slant Right',    type: 'pass', formation: 'spread',
+        routes: { WR1: R(8, -5), WR2: R(8, 5), TE: R(6, 2), RB: R(3, -3) },
+        notes: 'Quick slant.' },
+      { id: 'stub_go',      name: 'Four Verticals', type: 'pass', formation: 'spread',
+        routes: { WR1: R(20, -6), WR2: R(20, 6), TE: R(15, 2), RB: R(4, -2) },
+        notes: 'Send them deep.' },
+      { id: 'stub_screen',  name: 'Screen Left',    type: 'pass', formation: 'spread',
+        routes: { WR1: R(2, -6), WR2: R(2, 6), TE: R(4, 0), RB: R(1, -4) },
+        notes: 'RB screen.' },
+      { id: 'stub_dive',    name: 'Dive Up Middle', type: 'run',  formation: 'iform',
+        routes: { RB: R(6, 0) }, notes: 'Power run.' },
+      { id: 'stub_sweep',   name: 'Outside Sweep',  type: 'run',  formation: 'iform',
+        routes: { RB: R(5, 8) }, notes: 'Pitch and run.' },
+      { id: 'stub_draw',    name: 'QB Draw',        type: 'run',  formation: 'shotgun',
+        routes: { RB: R(4, 1) }, notes: 'Late handoff draw.' },
+    ];
+    const defStub = [
+      { id: 'stub_cover2', name: 'Cover 2 Zone',  formation: '4-3',
+        assignments: { LE:{type:'rush'}, DT:{type:'rush'}, NT:{type:'rush'}, RE:{type:'rush'},
+          MLB:{type:'zone',depth:6,lateral:0}, WLB:{type:'zone',depth:6,lateral:-5}, SLB:{type:'zone',depth:6,lateral:5},
+          LCB:{type:'zone',depth:6,lateral:-12}, RCB:{type:'zone',depth:6,lateral:12},
+          FS:{type:'zone',depth:14,lateral:-6}, SS:{type:'zone',depth:14,lateral:6} },
+        notes: 'Soft zone.' },
+      { id: 'stub_blitz',  name: 'MLB Blitz',     formation: '4-3',
+        assignments: { LE:{type:'rush'}, DT:{type:'rush'}, NT:{type:'rush'}, RE:{type:'rush'},
+          MLB:{type:'rush'}, WLB:{type:'zone',depth:6,lateral:-5}, SLB:{type:'zone',depth:6,lateral:5},
+          LCB:{type:'man',target:'WR1'}, RCB:{type:'man',target:'WR2'},
+          FS:{type:'zone',depth:14,lateral:0}, SS:{type:'man',target:'TE'} },
+        notes: 'Send the mike.' },
+      { id: 'stub_man',    name: 'Man Press',     formation: '4-3',
+        assignments: { LE:{type:'rush'}, DT:{type:'rush'}, NT:{type:'rush'}, RE:{type:'rush'},
+          MLB:{type:'man',target:'RB'}, WLB:{type:'man',target:'TE'}, SLB:{type:'zone',depth:6,lateral:4},
+          LCB:{type:'man',target:'WR1'}, RCB:{type:'man',target:'WR2'},
+          FS:{type:'zone',depth:12,lateral:0}, SS:{type:'man',target:'WR3'} },
+        notes: 'Tight man coverage.' },
+      { id: 'stub_nickel', name: 'Nickel Zone',   formation: 'nickel',
+        assignments: { LE:{type:'rush'}, DT:{type:'rush'}, NT:{type:'rush'}, RE:{type:'rush'},
+          MLB:{type:'zone',depth:5,lateral:0}, WLB:{type:'zone',depth:5,lateral:-6}, SLB:{type:'zone',depth:5,lateral:6},
+          LCB:{type:'zone',depth:7,lateral:-12}, RCB:{type:'zone',depth:7,lateral:12},
+          FS:{type:'zone',depth:13,lateral:-5}, SS:{type:'zone',depth:13,lateral:5} },
+        notes: 'Nickel zone.' },
+      { id: 'stub_goal',   name: 'Goal Line',     formation: 'goal-line',
+        assignments: { LE:{type:'rush'}, DT:{type:'rush'}, NT:{type:'rush'}, RE:{type:'rush'},
+          MLB:{type:'rush'}, WLB:{type:'rush'}, SLB:{type:'rush'},
+          LCB:{type:'man',target:'WR1'}, RCB:{type:'man',target:'WR2'},
+          FS:{type:'zone',depth:6,lateral:0}, SS:{type:'rush'} },
+        notes: 'Stop the run.' },
+      { id: 'stub_prevent',name: 'Prevent',       formation: 'dime',
+        assignments: { LE:{type:'rush'}, DT:{type:'rush'}, NT:{type:'zone',depth:8,lateral:0}, RE:{type:'rush'},
+          MLB:{type:'zone',depth:10,lateral:0}, WLB:{type:'zone',depth:10,lateral:-8}, SLB:{type:'zone',depth:10,lateral:8},
+          LCB:{type:'zone',depth:14,lateral:-14}, RCB:{type:'zone',depth:14,lateral:14},
+          FS:{type:'zone',depth:20,lateral:-7}, SS:{type:'zone',depth:20,lateral:7} },
+        notes: 'Deep soft zone.' },
+    ];
+    FB.PLAYBOOK = FB.PLAYBOOK || {};
+    FB.PLAYBOOK.offense = FB.PLAYBOOK.offense && FB.PLAYBOOK.offense.length ? FB.PLAYBOOK.offense : offStub;
+    FB.PLAYBOOK.defense = FB.PLAYBOOK.defense && FB.PLAYBOOK.defense.length ? FB.PLAYBOOK.defense : defStub;
+    if (typeof FB.pickAIPlay !== 'function') {
+      FB.pickAIPlay = (side) => {
+        const l = FB.PLAYBOOK[side] || [];
+        return l[Math.floor(Math.random() * l.length)] || l[0] || null;
+      };
+    }
+    if (typeof FB.expandRoute !== 'function') {
+      FB.expandRoute = (waypoints, startPos, dir) => {
+        if (!waypoints || !waypoints.length) return [];
+        return waypoints.map(w => new THREE.Vector3(startPos.x + w.dx * dir, 0, startPos.z + w.dz));
+      };
+    }
+  }
+
   FB.openPlayPicker = function (side, cb) {
     // Surface the picker modal first so a render error below can't hide it.
     const modal = document.getElementById('playPicker');
@@ -312,14 +391,11 @@
     ppSide = side || (userIsOffense() ? 'offense' : 'defense');
     ppCallback = cb || null;
     try {
+      ensurePlaybook();
       const titleEl = document.getElementById('playPickerTitle');
       if (titleEl) titleEl.textContent = ppSide === 'offense' ? 'PICK AN OFFENSIVE PLAY' : 'PICK A DEFENSIVE PLAY';
       // Sync tabs
       document.querySelectorAll('.pp-tab').forEach(t => t.classList.toggle('active', t.dataset.pp === ppSide));
-      if (!FB.PLAYBOOK || !FB.PLAYBOOK[ppSide] || !FB.PLAYBOOK[ppSide].length) {
-        FB.flashWarn && FB.flashWarn('Playbook missing for ' + ppSide);
-        return;
-      }
       // Fresh hand of 3 random plays every time the picker opens.
       ppHand[ppSide] = pickRandomHand(ppSide);
       FB.selectedPlay[ppSide] = ppHand[ppSide][0] || FB.PLAYBOOK[ppSide][0];
