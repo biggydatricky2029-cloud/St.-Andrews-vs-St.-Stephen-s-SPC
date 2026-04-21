@@ -258,8 +258,22 @@
   FB.selectedPlay = { offense: null, defense: null };
   let ppSide = 'offense';
   let ppCallback = null;
-  const PP_PAGE_SIZE = 3;
-  let ppPage = { offense: 0, defense: 0 };
+  const PP_HAND_SIZE = 3;
+  // Current "hand" of 3 random plays offered to the user per side.
+  let ppHand = { offense: [], defense: [] };
+
+  function pickRandomHand(side) {
+    const list = (FB.PLAYBOOK && FB.PLAYBOOK[side]) || [];
+    if (!list.length) return [];
+    const pool = list.slice();
+    const hand = [];
+    const n = Math.min(PP_HAND_SIZE, pool.length);
+    for (let i = 0; i < n; i++) {
+      const idx = Math.floor(Math.random() * pool.length);
+      hand.push(pool.splice(idx, 1)[0]);
+    }
+    return hand;
+  }
 
   function wirePlayPicker() {
     const tabs = document.querySelectorAll('.pp-tab');
@@ -267,6 +281,10 @@
       tabs.forEach(x => x.classList.remove('active'));
       t.classList.add('active');
       ppSide = t.dataset.pp;
+      if (!ppHand[ppSide] || !ppHand[ppSide].length) ppHand[ppSide] = pickRandomHand(ppSide);
+      if (!FB.selectedPlay[ppSide] || !ppHand[ppSide].includes(FB.selectedPlay[ppSide])) {
+        FB.selectedPlay[ppSide] = ppHand[ppSide][0] || null;
+      }
       renderPlayList();
     }));
     document.getElementById('ppConfirm').addEventListener('click', () => {
@@ -277,11 +295,8 @@
       if (ppCallback) { const cb = ppCallback; ppCallback = null; cb(); }
     });
     document.getElementById('ppShuffle').addEventListener('click', () => {
-      const list = FB.PLAYBOOK[ppSide];
-      FB.selectedPlay[ppSide] = list[Math.floor(Math.random() * list.length)];
-      // Jump the page to the shuffled play so it's visible.
-      const idx = list.indexOf(FB.selectedPlay[ppSide]);
-      ppPage[ppSide] = Math.max(0, Math.floor(idx / PP_PAGE_SIZE));
+      ppHand[ppSide] = pickRandomHand(ppSide);
+      FB.selectedPlay[ppSide] = ppHand[ppSide][0] || FB.selectedPlay[ppSide];
       renderPlayList();
     });
   }
@@ -305,8 +320,9 @@
         FB.flashWarn && FB.flashWarn('Playbook missing for ' + ppSide);
         return;
       }
-      if (!FB.selectedPlay[ppSide]) FB.selectedPlay[ppSide] = FB.PLAYBOOK[ppSide][0];
-      ppPage[ppSide] = 0;
+      // Fresh hand of 3 random plays every time the picker opens.
+      ppHand[ppSide] = pickRandomHand(ppSide);
+      FB.selectedPlay[ppSide] = ppHand[ppSide][0] || FB.PLAYBOOK[ppSide][0];
       renderPlayList();
     } catch (e) {
       FB.flashWarn && FB.flashWarn('Picker err: ' + (e && e.message ? e.message : e));
@@ -315,7 +331,7 @@
         const list = document.getElementById('playList');
         if (list && FB.PLAYBOOK && FB.PLAYBOOK[ppSide]) {
           list.innerHTML = '';
-          const plays = FB.PLAYBOOK[ppSide].slice(0, 6);
+          const plays = FB.PLAYBOOK[ppSide].slice(0, 3);
           for (const p of plays) {
             const card = document.createElement('div');
             card.className = 'play-card' + (FB.selectedPlay[ppSide] && FB.selectedPlay[ppSide].id === p.id ? ' active' : '');
@@ -330,13 +346,13 @@
 
   function renderPlayList() {
     const list = document.getElementById('playList');
+    if (!list) return;
     list.innerHTML = '';
-    const plays = FB.PLAYBOOK[ppSide];
-    const totalPages = Math.max(1, Math.ceil(plays.length / PP_PAGE_SIZE));
-    if (ppPage[ppSide] >= totalPages) ppPage[ppSide] = 0;
-    const start = ppPage[ppSide] * PP_PAGE_SIZE;
-    const slice = plays.slice(start, start + PP_PAGE_SIZE);
-    for (const p of slice) {
+    const hand = (ppHand[ppSide] && ppHand[ppSide].length)
+      ? ppHand[ppSide]
+      : (FB.PLAYBOOK && FB.PLAYBOOK[ppSide] ? FB.PLAYBOOK[ppSide].slice(0, PP_HAND_SIZE) : []);
+    ppHand[ppSide] = hand;
+    for (const p of hand) {
       const card = document.createElement('div');
       card.className = 'play-card' + (FB.selectedPlay[ppSide] && FB.selectedPlay[ppSide].id === p.id ? ' active' : '');
       let diagram = '';
@@ -353,17 +369,6 @@
         renderPlayList();
       });
       list.appendChild(card);
-    }
-    if (totalPages > 1) {
-      const nav = document.createElement('div');
-      nav.className = 'play-page-nav';
-      nav.innerHTML = '<button class="play-page-arrow" aria-label="More plays">▼</button>'
-        + '<div class="play-page-indicator">' + (ppPage[ppSide] + 1) + ' / ' + totalPages + '</div>';
-      nav.querySelector('.play-page-arrow').addEventListener('click', () => {
-        ppPage[ppSide] = (ppPage[ppSide] + 1) % totalPages;
-        renderPlayList();
-      });
-      list.appendChild(nav);
     }
   }
 

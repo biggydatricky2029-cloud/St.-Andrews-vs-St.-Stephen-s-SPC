@@ -78,13 +78,18 @@
     const def = FB.selectedPlay.defense || FB.PLAYBOOK.defense[0];
     applyDefensiveAssignments(def);
 
-    if (defTeam === FB.userTeam) {
-      FB.userDefender = FB.getStarter(defTeam, 'MLB') || FB.defendersOf(s.possession)[0] || null;
-      // AI offense snaps itself shortly after.
-      setTimeout(() => { if (FB.state.phase === 'presnap') FB.snapBall(); }, 1400);
-    } else {
-      FB.userDefender = null;
-    }
+    // Run the 11v11 onto the field from their sidelines before allowing the snap.
+    FB.startRunOn && FB.startRunOn(s.possession, defTeam, () => {
+      if (defTeam === FB.userTeam) {
+        FB.userDefender = FB.getStarter(defTeam, 'MLB') || FB.defendersOf(s.possession)[0] || null;
+        // AI offense snaps itself shortly after run-on finishes.
+        setTimeout(() => { if (FB.state.phase === 'presnap') FB.snapBall(); }, 900);
+      } else {
+        FB.userDefender = null;
+      }
+      FB.updateButtonStates && FB.updateButtonStates();
+      FB.updateHUD && FB.updateHUD();
+    });
 
     FB.updateButtonStates && FB.updateButtonStates();
     FB.updateHUD && FB.updateHUD();

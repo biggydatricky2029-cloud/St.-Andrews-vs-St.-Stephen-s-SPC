@@ -460,6 +460,86 @@
     }
   };
 
+  // --- Run-on animation: after spawn, slide players in from their sidelines. ---
+  // Offense enters from +Z sideline, defense from -Z sideline; each animates to
+  // its formation target over ~1.6s with a smooth ease-out so the gait kicks in.
+  FB.runOnState = null;
+  FB.startRunOn = function (offTeam, defTeam, cb) {
+    const half = FB.const.FIELD_WID / 2;
+    const targets = [];
+    const gather = (teamKey, fromZ) => {
+      for (const e of FB.activePlayers[teamKey]) {
+        if (!e.mesh.visible) continue;
+        const tx = e.mesh.position.x;
+        const tz = e.mesh.position.z;
+        // Start position: same X as target, Z pushed to the sideline.
+        const sx = tx + (Math.random() - 0.5) * 6;
+        const sz = fromZ + (Math.random() - 0.5) * 2;
+        e.mesh.position.set(sx, 0, sz);
+        // Face toward target so the gait reads correctly.
+        const dx = tx - sx, dz = tz - sz;
+        e.mesh.rotation.y = Math.atan2(dx, dz);
+        targets.push({ ent: e, sx, sz, tx, tz });
+      }
+    };
+    gather(offTeam, half + 8);
+    gather(defTeam, -half - 8);
+    FB.runOnState = {
+      targets,
+      duration: 1.6,
+      t: 0,
+      cb: cb || null,
+      offTeam, defTeam,
+      fired: false,
+    };
+    // Safety fallback in case the update loop stalls.
+    const stateRef = FB.runOnState;
+    setTimeout(() => {
+      if (stateRef && !stateRef.fired) {
+        stateRef.fired = true;
+        finalizeRunOn(stateRef);
+      }
+    }, 3500);
+  };
+
+  function finalizeRunOn(r) {
+    // Snap every player to its target and restore forward-facing rotation.
+    for (const tgt of r.targets) {
+      tgt.ent.mesh.position.set(tgt.tx, 0, tgt.tz);
+      tgt.ent.vel.set(0, 0, 0);
+      const dir = FB.forwardDir(tgt.ent.team);
+      tgt.ent.mesh.rotation.y = dir === 1 ? Math.PI / 2 : -Math.PI / 2;
+    }
+    if (FB.runOnState === r) FB.runOnState = null;
+    if (r.cb) { try { r.cb(); } catch (_) {} }
+  }
+
+  FB.updateRunOn = function (dt) {
+    const r = FB.runOnState;
+    if (!r || r.fired) return;
+    r.t = Math.min(r.duration, r.t + dt);
+    const p = r.t / r.duration;
+    // Ease-out: fast start, slow arrival.
+    const ease = 1 - Math.pow(1 - p, 2.2);
+    for (const tgt of r.targets) {
+      const nx = tgt.sx + (tgt.tx - tgt.sx) * ease;
+      const nz = tgt.sz + (tgt.tz - tgt.sz) * ease;
+      // Approximate velocity so the gait animator sees motion.
+      const px = tgt.ent.mesh.position.x, pz = tgt.ent.mesh.position.z;
+      tgt.ent.mesh.position.set(nx, 0, nz);
+      tgt.ent.vel.set((nx - px) / Math.max(0.0001, dt), 0, (nz - pz) / Math.max(0.0001, dt));
+    }
+    // Keep the ball with the QB while they jog to the line.
+    if (FB.ball && FB.ballCarrier && FB.ballState && FB.ballState.carried) {
+      FB.ball.position.copy(FB.ballCarrier.mesh.position)
+        .add(new THREE.Vector3(0, FB.ballCarrier.carryY || 2.2, 0.3));
+    }
+    if (r.t >= r.duration) {
+      r.fired = true;
+      finalizeRunOn(r);
+    }
+  };
+
   FB.createBall = function () {
     const geom = new THREE.SphereGeometry(0.35, 12, 10);
     geom.scale(1, 0.6, 0.6);
