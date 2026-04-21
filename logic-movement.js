@@ -28,6 +28,16 @@
       return;
     }
 
+    // Safety watchdog: if a play (especially a kickoff return) drags on past
+    // 14 seconds without a tackle/TD/OOB, force it to end so the next play
+    // can be called. Prevents the returner from running forever if coverage
+    // somehow fails to close.
+    FB.playTicker = (FB.playTicker || 0) + dt;
+    if (FB.playTicker > 14 && FB.endPlay) {
+      FB.endPlay({ reason: 'timeout' });
+      return;
+    }
+
     const dir = FB.forwardDir(bc.team);
     let dx, dz;
     // Human controls the carrier only when the user's team has possession.
@@ -136,12 +146,19 @@
                  : FB.ball ? FB.ball.position.clone() : new THREE.Vector3(losX, 0, ent.mesh.position.z);
         } else if (a.type === 'koCover') {
           // Kickoff pursuit: hold outside lane Z while far from the carrier,
-          // then pinch in as we close so the returner gets surrounded.
+          // then pinch in as we close so the returner gets surrounded — and
+          // go hard-pursuit inside 14yd so the tackle actually happens.
           const car = carrier && FB.ballState.carried ? carrier.mesh.position : (FB.ball ? FB.ball.position : null);
           if (car) {
-            const dxToCar = Math.abs(car.x - ent.mesh.position.x);
-            const laneHold = Math.max(0, Math.min(1, (dxToCar - 4) / 16));
-            target = new THREE.Vector3(car.x, 0, car.z * (1 - laneHold) + a.laneZ * laneHold);
+            const toCar = Math.hypot(car.x - ent.mesh.position.x, car.z - ent.mesh.position.z);
+            if (toCar < 14) {
+              // Close enough — beeline the carrier, no lane hold.
+              target = new THREE.Vector3(car.x, 0, car.z);
+            } else {
+              // Still deep: hold outside lane, pinch in as we approach.
+              const laneHold = Math.max(0, Math.min(1, (toCar - 14) / 18));
+              target = new THREE.Vector3(car.x, 0, car.z * (1 - laneHold) + a.laneZ * laneHold);
+            }
           } else {
             target = new THREE.Vector3(ent.mesh.position.x + dir * 10, 0, a.laneZ);
           }
@@ -168,14 +185,16 @@
           }
         }
         // Kickoff coverage sprints so the returner gets swarmed within seconds.
-        const koChase = FB.specialMode === 'kickoff' ? 1.30 : 1;
+        const koChase = FB.specialMode === 'kickoff' ? 1.45 : 1;
         steerToward(ent, target, dt, reaction * 0.95 * koChase);
       }
 
-      // Tackle check (any defender near the ball carrier).
+      // Tackle check (any defender near the ball carrier). Wider reach on
+      // kickoff returns so the coverage team can bring the returner down.
       if (carrier && FB.ballState.carried && !carrier.isDown) {
         const d = ent.mesh.position.distanceTo(carrier.mesh.position);
-        if (d < 1.4) { FB.attemptTackle && FB.attemptTackle(ent, carrier); }
+        const tackleR = FB.specialMode === 'kickoff' ? 1.9 : 1.4;
+        if (d < tackleR) { FB.attemptTackle && FB.attemptTackle(ent, carrier); }
       }
     }
   };
