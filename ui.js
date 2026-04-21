@@ -394,8 +394,12 @@
       ensurePlaybook();
       const titleEl = document.getElementById('playPickerTitle');
       if (titleEl) titleEl.textContent = ppSide === 'offense' ? 'PICK AN OFFENSIVE PLAY' : 'PICK A DEFENSIVE PLAY';
-      // Sync tabs
-      document.querySelectorAll('.pp-tab').forEach(t => t.classList.toggle('active', t.dataset.pp === ppSide));
+      // Only the user's side of the ball is pickable — hide the opposite tab.
+      document.querySelectorAll('.pp-tab').forEach(t => {
+        const isUsersSide = t.dataset.pp === ppSide;
+        t.classList.toggle('active', isUsersSide);
+        t.style.display = isUsersSide ? '' : 'none';
+      });
       // Fresh hand of 3 random plays every time the picker opens.
       ppHand[ppSide] = pickRandomHand(ppSide);
       FB.selectedPlay[ppSide] = ppHand[ppSide][0] || FB.PLAYBOOK[ppSide][0];
@@ -658,7 +662,7 @@
   }
 
   // ---- Bootstrap ----
-  const BUILD_TAG = 'BUILD-20260421f';
+  const BUILD_TAG = 'BUILD-20260421g';
   function paintVersionTag() {
     try {
       const host = document.body;
