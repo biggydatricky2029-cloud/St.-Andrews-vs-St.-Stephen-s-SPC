@@ -284,8 +284,6 @@
       ppPage[ppSide] = Math.max(0, Math.floor(idx / PP_PAGE_SIZE));
       renderPlayList();
     });
-    const btnHuddle = document.getElementById('btnHuddle');
-    if (btnHuddle) btnHuddle.addEventListener('click', () => openPlayPicker(userIsOffense() ? 'offense' : 'defense', null));
   }
 
   function userIsOffense() {
@@ -315,9 +313,9 @@
     for (const p of slice) {
       const card = document.createElement('div');
       card.className = 'play-card' + (FB.selectedPlay[ppSide] && FB.selectedPlay[ppSide].id === p.id ? ' active' : '');
-      card.innerHTML = '<div class="play-card-name">' + escapeHtml(p.name) + '</div>'
-        + '<div class="play-card-type">' + (p.type || p.formation || '') + '</div>'
-        + '<div class="play-card-notes">' + escapeHtml(p.notes || '') + '</div>';
+      card.innerHTML =
+        '<div class="play-card-title">' + escapeHtml(p.name.toUpperCase()) + '</div>'
+        + '<div class="play-card-diagram-wrap">' + buildPlayDiagramSVG(p, ppSide) + '</div>';
       card.addEventListener('click', () => {
         FB.selectedPlay[ppSide] = p;
         renderPlayList();
@@ -335,6 +333,190 @@
       });
       list.appendChild(nav);
     }
+  }
+
+  // Madden-style top-down play diagram: green field, LOS, player icons, and
+  // colored route arrows (or defensive assignment arrows).
+  const DIAG_W = 320, DIAG_H = 200;
+  const CX = DIAG_W / 2;      // center x (middle of hash)
+  const LOS_Y = 155;          // LOS baseline
+  const SCALE_X = 5;          // px per lateral yard
+  const SCALE_Y = 3.8;        // px per downfield yard
+  const ROUTE_COLORS = { WR1: '#ff3838', WR2: '#ffd400', WR3: '#4cc9f0', TE: '#b8ff3d', RB: '#ff9a1f' };
+  const WR_LETTER = { WR1: 'X', WR2: 'Z', WR3: 'H', TE: 'Y', RB: 'RB', QB: 'QB' };
+
+  function fieldToSvg(spotX, spotZ) {
+    // spotX is yard offset from LOS toward downfield (+); spotZ is lateral.
+    return { x: CX + spotZ * SCALE_X, y: LOS_Y - spotX * SCALE_Y };
+  }
+
+  const ARROW_COLORS = [
+    { id: 'red', fill: '#ff3838' }, { id: 'yellow', fill: '#ffd400' },
+    { id: 'blue', fill: '#4cc9f0' }, { id: 'green', fill: '#b8ff3d' },
+    { id: 'orange', fill: '#ff9a1f' }, { id: 'white', fill: '#ffffff' },
+    { id: 'rush', fill: '#ff8a4c' },
+  ];
+  function colorToMarkerId(color) {
+    switch (color) {
+      case '#ff3838': return 'red';
+      case '#ffd400': return 'yellow';
+      case '#4cc9f0': return 'blue';
+      case '#b8ff3d': return 'green';
+      case '#ff9a1f': return 'orange';
+      case '#ff8a4c': return 'rush';
+      default: return 'white';
+    }
+  }
+
+  function buildPlayDiagramSVG(play, side) {
+    let body = '';
+    body += '<defs>'
+      + '<linearGradient id="pdFld" x1="0" y1="0" x2="0" y2="1">'
+      + '<stop offset="0" stop-color="#1f7236"/>'
+      + '<stop offset="1" stop-color="#0a3517"/>'
+      + '</linearGradient>';
+    for (const c of ARROW_COLORS) {
+      body += '<marker id="pd_' + c.id + '" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">'
+        + '<path d="M0,0 L10,5 L0,10 z" fill="' + c.fill + '"/>'
+        + '</marker>';
+    }
+    body += '</defs>';
+    body += '<rect x="0" y="0" width="' + DIAG_W + '" height="' + DIAG_H + '" fill="url(#pdFld)"/>';
+    // Yard lines (horizontal stripes, ~every 5 yards downfield)
+    for (let yd = -5; yd <= 30; yd += 5) {
+      const y = LOS_Y - yd * SCALE_Y;
+      if (y < 0 || y > DIAG_H) continue;
+      const op = yd === 0 ? 0.95 : 0.3;
+      const w = yd === 0 ? 1.5 : 0.7;
+      body += '<line x1="0" y1="' + y + '" x2="' + DIAG_W + '" y2="' + y + '" stroke="#ffffff" stroke-opacity="' + op + '" stroke-width="' + w + '"/>';
+    }
+    // Hash ticks along the midfield (vertical accents)
+    for (const hx of [-6, 6]) {
+      for (let yd = -5; yd <= 30; yd += 1) {
+        const y = LOS_Y - yd * SCALE_Y;
+        if (y < 0 || y > DIAG_H) continue;
+        const x = CX + hx * SCALE_X;
+        body += '<line x1="' + (x - 1) + '" y1="' + y + '" x2="' + (x + 1) + '" y2="' + y + '" stroke="#ffffff" stroke-opacity="0.5" stroke-width="0.5"/>';
+      }
+    }
+
+    if (side === 'offense' || play.routes || play.ballTo) {
+      body += drawOffense(play);
+    } else {
+      body += drawDefense(play);
+    }
+    return '<svg class="play-card-diagram" viewBox="0 0 ' + DIAG_W + ' ' + DIAG_H + '" preserveAspectRatio="xMidYMid meet">' + body + '</svg>';
+  }
+
+  // Mirror of FB.offenseFormation but in diagram-space.
+  function formationSpots() {
+    return [
+      { slot: 'LT', dx: -0.3, dz: -4 },
+      { slot: 'LG', dx: -0.3, dz: -2 },
+      { slot: 'C',  dx: -0.3, dz:  0 },
+      { slot: 'RG', dx: -0.3, dz:  2 },
+      { slot: 'RT', dx: -0.3, dz:  4 },
+      { slot: 'QB', dx: -5,   dz:  0 },
+      { slot: 'RB', dx: -5,   dz: -2.5 },
+      { slot: 'TE', dx: -0.3, dz:  6 },
+      { slot: 'WR1',dx: -0.3, dz: -18 },
+      { slot: 'WR2',dx: -0.3, dz:  18 },
+      { slot: 'WR3',dx: -2,   dz: -12 },
+    ];
+  }
+
+  function drawOffense(play) {
+    let out = '';
+    const spots = formationSpots();
+    const routes = play.routes || {};
+    // Draw routes first (behind the player chips).
+    for (const sp of spots) {
+      const rt = routes[sp.slot];
+      if (!rt || !rt.length) continue;
+      const color = ROUTE_COLORS[sp.slot] || '#ffffff';
+      const start = fieldToSvg(sp.dx, sp.dz);
+      let pts = start.x + ',' + start.y;
+      for (const w of rt) {
+        const p = fieldToSvg(sp.dx + w.dx, sp.dz + w.dz);
+        pts += ' ' + p.x + ',' + p.y;
+      }
+      out += '<polyline points="' + pts + '" fill="none" stroke="' + color + '" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#pd_' + colorToMarkerId(color) + ')"/>';
+    }
+    // Ball-to arrow for runs without a route (like QB sneak).
+    if (play.type === 'run' && play.ballTo === 'QB' && !routes['QB']) {
+      const start = fieldToSvg(-5, 0);
+      const end = fieldToSvg(2, 0);
+      out += '<line x1="' + start.x + '" y1="' + start.y + '" x2="' + end.x + '" y2="' + end.y + '" stroke="#4cc9f0" stroke-width="2.6" stroke-linecap="round" marker-end="url(#pd_blue)"/>';
+    }
+    // Draw player chips on top.
+    for (const sp of spots) {
+      const p = fieldToSvg(sp.dx, sp.dz);
+      if (['LT','LG','C','RG','RT'].includes(sp.slot)) {
+        // O-line: white square
+        out += '<rect x="' + (p.x - 4) + '" y="' + (p.y - 4) + '" width="8" height="8" fill="#f0f0f0" stroke="#222" stroke-width="0.8"/>';
+      } else {
+        // Skill: black circle with letter
+        const letter = WR_LETTER[sp.slot] || sp.slot;
+        out += '<circle cx="' + p.x + '" cy="' + p.y + '" r="6.5" fill="#111" stroke="#fff" stroke-width="0.8"/>';
+        out += '<text x="' + p.x + '" y="' + (p.y + 2.6) + '" text-anchor="middle" font-family="system-ui,Arial,sans-serif" font-size="' + (letter.length > 1 ? 5.5 : 7.5) + '" font-weight="700" fill="#ffffff">' + letter + '</text>';
+      }
+    }
+    return out;
+  }
+
+  function drawDefense(play) {
+    // Defense layout: 4 DL at +1yd, 3 LB at +5yd, 2 CB wide at +2yd, 2 S deep at +12yd.
+    const spots = [
+      { slot: 'LE', dx: 1, dz: -5 }, { slot: 'DT', dx: 1, dz: -1.5 },
+      { slot: 'NT', dx: 1, dz:  1.5 },{ slot: 'RE', dx: 1, dz: 5 },
+      { slot: 'WLB',dx: 5, dz: -7 }, { slot: 'MLB', dx: 5, dz: 0 },
+      { slot: 'SLB',dx: 5, dz:  7 },
+      { slot: 'LCB',dx: 3, dz: -18 },{ slot: 'RCB', dx: 3, dz: 18 },
+      { slot: 'FS', dx: 13, dz: -6 },{ slot: 'SS',  dx: 13, dz: 8 },
+    ];
+    const assign = play.assignments || {};
+    // O-line reference (dim white squares) to orient the defensive diagram.
+    const oline = [{ dz: -4 }, { dz: -2 }, { dz: 0 }, { dz: 2 }, { dz: 4 }];
+    let out = '';
+    for (const o of oline) {
+      const p = fieldToSvg(-0.3, o.dz);
+      out += '<rect x="' + (p.x - 4) + '" y="' + (p.y - 4) + '" width="8" height="8" fill="#f0f0f0" fill-opacity="0.35" stroke="#ffffff" stroke-opacity="0.4" stroke-width="0.6"/>';
+    }
+    // QB reference.
+    const qb = fieldToSvg(-5, 0);
+    out += '<circle cx="' + qb.x + '" cy="' + qb.y + '" r="5" fill="#ffffff" fill-opacity="0.35" stroke="#ffffff" stroke-opacity="0.4"/>';
+
+    // Draw assignment indicators first (behind chips).
+    for (const sp of spots) {
+      const a = assign[sp.slot];
+      if (!a) continue;
+      const p = fieldToSvg(sp.dx, sp.dz);
+      if (a.type === 'rush' || a.type === 'blitz') {
+        const color = a.type === 'blitz' ? '#ff3838' : '#ff8a4c';
+        const mk = a.type === 'blitz' ? 'red' : 'rush';
+        const tgt = fieldToSvg(-4, sp.dz * 0.3);
+        out += '<line x1="' + p.x + '" y1="' + p.y + '" x2="' + tgt.x + '" y2="' + tgt.y + '" stroke="' + color + '" stroke-width="2.2" stroke-linecap="round" marker-end="url(#pd_' + mk + ')"/>';
+      } else if (a.type === 'zone') {
+        const zx = CX + (a.lateral || 0) * SCALE_X;
+        const zy = LOS_Y - (a.depth || 0) * SCALE_Y;
+        out += '<circle cx="' + zx + '" cy="' + zy + '" r="10" fill="none" stroke="#4cc9f0" stroke-width="1.8" stroke-dasharray="3,2"/>';
+        out += '<line x1="' + p.x + '" y1="' + p.y + '" x2="' + zx + '" y2="' + zy + '" stroke="#4cc9f0" stroke-width="1.4" stroke-opacity="0.7" stroke-dasharray="2,2"/>';
+      } else if (a.type === 'man') {
+        // Approximate man-target position from the formation.
+        const targetsZ = { WR1: -18, WR2: 18, WR3: -12, TE: 6, RB: -2.5 };
+        const tz = targetsZ[a.target] != null ? targetsZ[a.target] : 0;
+        const tdx = a.target === 'RB' ? -5 : -0.3;
+        const tgt = fieldToSvg(tdx, tz);
+        out += '<line x1="' + p.x + '" y1="' + p.y + '" x2="' + tgt.x + '" y2="' + tgt.y + '" stroke="#b8ff3d" stroke-width="1.6" stroke-dasharray="4,3" marker-end="url(#pd_green)"/>';
+      }
+    }
+    // Defender chips: red circles with role letter.
+    for (const sp of spots) {
+      const p = fieldToSvg(sp.dx, sp.dz);
+      out += '<circle cx="' + p.x + '" cy="' + p.y + '" r="6.5" fill="#b22222" stroke="#ffffff" stroke-width="0.8"/>';
+      out += '<text x="' + p.x + '" y="' + (p.y + 2.2) + '" text-anchor="middle" font-family="system-ui,Arial,sans-serif" font-size="5" font-weight="700" fill="#ffffff">' + sp.slot + '</text>';
+    }
+    return out;
   }
 
   // ---- Bootstrap ----

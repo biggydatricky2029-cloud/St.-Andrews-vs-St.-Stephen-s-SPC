@@ -117,7 +117,6 @@
     const isKick = s.phase === 'kick';
     const userOnOffense = s.possession === FB.userTeam;
     show('btnSnap', isPre && s.playType !== 'kickoff' && s.playType !== 'fg' && s.playType !== 'punt');
-    show('btnHuddle', isPre && s.playType !== 'kickoff' && s.playType !== 'fg' && s.playType !== 'punt' && s.playType !== 'xp');
     show('btnHandoff', isPre && userOnOffense && (s.playType === 'run' || s.playType === 'pass'));
     show('btnPass', isPlay && userOnOffense && FB.ballCarrier === FB.qb);
     show('btnJuke', isPlay && userOnOffense && FB.ballCarrier && FB.ballCarrier.team === s.possession);

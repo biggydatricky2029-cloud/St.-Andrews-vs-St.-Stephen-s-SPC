@@ -245,8 +245,9 @@ window.FB = window.FB || {};
     FB.referee = ref;
   }
 
-  // Referee walks the ball from `from` to `to`, then hides and fires `cb`.
-  // Used after every tackle/OOB so the ball visibly gets spotted on the hash.
+  // Referee three-phase spot: (1) walk to spot carrying the ball,
+  // (2) place the ball on the ground, (3) step aside off the hash — then fire
+  // `cb` so the play picker opens and eventually the 22 players spawn.
   FB.startRefSpot = function (from, to, cb) {
     if (!FB.referee) { if (cb) cb(); return; }
     FB.referee.visible = true;
@@ -255,25 +256,62 @@ window.FB = window.FB || {};
     FB.ballState.inAir = false;
     FB.ballCarrier = null;
     FB.ball.position.set(from.x, 2.1, from.z + 0.35);
-    FB.refState = { fx: from.x, fz: from.z, tx: to.x, tz: to.z, t: 0, dur: 0.9, cb };
+    // Pick a step-aside direction: perpendicular to the walk, away from center.
+    const walkDx = to.x - from.x, walkDz = to.z - from.z;
+    const walkLen = Math.hypot(walkDx, walkDz) || 1;
+    const perpX = -walkDz / walkLen, perpZ = walkDx / walkLen;
+    const awaySign = to.z > 0 ? 1 : -1;
+    const stepZ = to.z + awaySign * 3.5;
+    const stepX = to.x + perpX * 0.6;
+    FB.refState = {
+      phase: 'walk', t: 0,
+      fx: from.x, fz: from.z, tx: to.x, tz: to.z,
+      sx: stepX, sz: stepZ,
+      durWalk: 0.9, durPlace: 0.35, durStep: 0.7,
+      cb,
+    };
   };
 
   FB.updateRefAnim = function (dt) {
     const r = FB.refState;
     if (!r) return;
     r.t += dt;
-    const p = Math.min(1, r.t / r.dur);
-    const x = r.fx + (r.tx - r.fx) * p;
-    const z = r.fz + (r.tz - r.fz) * p;
-    FB.referee.position.set(x, 0, z);
-    const dx = r.tx - r.fx, dz = r.tz - r.fz;
-    if (dx * dx + dz * dz > 0.0001) FB.referee.rotation.y = Math.atan2(dx, dz);
-    FB.ball.position.set(x, 2.1, z + 0.35);
-    if (p >= 1) {
-      FB.referee.visible = false;
-      const cb = r.cb;
-      FB.refState = null;
-      if (cb) cb();
+    if (r.phase === 'walk') {
+      const p = Math.min(1, r.t / r.durWalk);
+      const x = r.fx + (r.tx - r.fx) * p;
+      const z = r.fz + (r.tz - r.fz) * p;
+      FB.referee.position.set(x, 0, z);
+      const dx = r.tx - r.fx, dz = r.tz - r.fz;
+      if (dx * dx + dz * dz > 0.0001) FB.referee.rotation.y = Math.atan2(dx, dz);
+      FB.ball.position.set(x, 2.1, z + 0.35);
+      if (p >= 1) { r.phase = 'place'; r.t = 0; }
+    } else if (r.phase === 'place') {
+      // Ref bends slightly and the ball drops to the ground on the spot.
+      const p = Math.min(1, r.t / r.durPlace);
+      const ballY = 2.1 + (0.35 - 2.1) * p;
+      FB.ball.position.set(r.tx, ballY, r.tz);
+      FB.referee.position.set(r.tx, 0, r.tz);
+      // Simulate a small bow by scaling the referee vertically.
+      FB.referee.scale.y = 1 - 0.15 * Math.sin(Math.PI * p);
+      if (p >= 1) {
+        FB.referee.scale.y = 1;
+        FB.ball.position.set(r.tx, 0.35, r.tz);
+        r.phase = 'step'; r.t = 0;
+      }
+    } else if (r.phase === 'step') {
+      // Ref walks aside so the field is clear for the offense/defense spawn.
+      const p = Math.min(1, r.t / r.durStep);
+      const x = r.tx + (r.sx - r.tx) * p;
+      const z = r.tz + (r.sz - r.tz) * p;
+      FB.referee.position.set(x, 0, z);
+      const dx = r.sx - r.tx, dz = r.sz - r.tz;
+      if (dx * dx + dz * dz > 0.0001) FB.referee.rotation.y = Math.atan2(dx, dz);
+      if (p >= 1) {
+        FB.referee.visible = false;
+        const cb = r.cb;
+        FB.refState = null;
+        if (cb) cb();
+      }
     }
   };
 

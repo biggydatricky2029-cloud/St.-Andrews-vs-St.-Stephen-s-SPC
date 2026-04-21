@@ -57,12 +57,12 @@ html, body {
 .tp-logo.tp-home { background: var(--home-primary); color: var(--home-secondary); border: 2px solid var(--home-secondary); }
 .tp-logo.tp-away { background: var(--away-primary); color: var(--away-secondary); border: 2px solid var(--away-secondary); }
 
-.play-list { display: flex; flex-direction: column; gap: 8px; max-height: 54vh; overflow-y: auto; padding: 4px; }
-.play-card { background: rgba(255,255,255,0.04); border: 1px solid var(--hud-border); border-radius: 8px; padding: 10px; cursor: pointer; }
-.play-card.active { border-color: var(--accent); background: rgba(76,201,240,0.12); }
-.play-card-name { font-weight: 700; font-size: 14px; margin-bottom: 2px; }
-.play-card-type { font-size: 10px; letter-spacing: 0.5px; text-transform: uppercase; opacity: 0.7; }
-.play-card-notes { font-size: 11px; opacity: 0.75; margin-top: 4px; line-height: 1.4; }
+.play-list { display: flex; flex-direction: column; gap: 10px; max-height: 64vh; overflow-y: auto; padding: 4px; }
+.play-card { background: #0b1a0e; border: 2px solid #000; border-radius: 6px; padding: 0; cursor: pointer; overflow: hidden; box-shadow: 0 2px 6px rgba(0,0,0,0.6); }
+.play-card.active { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(76,201,240,0.55), 0 2px 6px rgba(0,0,0,0.6); }
+.play-card-title { background: linear-gradient(#ffd24a, #d8a422); color: #111; font-weight: 900; font-size: 13px; letter-spacing: 0.5px; padding: 5px 8px; text-align: center; border-bottom: 2px solid #000; text-transform: uppercase; text-shadow: 0 1px 0 rgba(255,255,255,0.25); }
+.play-card-diagram-wrap { background: #0a3517; line-height: 0; }
+.play-card-diagram { width: 100%; height: auto; display: block; }
 .play-page-nav { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 4px; }
 .play-page-arrow { background: rgba(76,201,240,0.15); color: var(--accent); border: 1px solid var(--accent); border-radius: 50%; width: 36px; height: 36px; font-size: 16px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; }
 .play-page-arrow:active { background: rgba(76,201,240,0.3); }
