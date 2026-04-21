@@ -163,28 +163,113 @@
     FB.state.log.push('Caught by #' + rcv.player.number);
   };
 
-  // Juke — attempt to break the nearest defender's tackle.
+  // Four-move juke system — AI picks the best move given the defender's
+  // position and the carrier/defender size matchup:
+  //   spinRight / spinLeft — pivot away from the defender
+  //   truck                — lower shoulder, run through
+  //   stiffArm             — extend arm into the defender's helmet
   FB.tryJuke = function () {
     const bc = FB.ballCarrier;
     if (!bc || bc.jukeCooldown > 0 || bc.stamina < 15) return;
     const near = FB.nearestDefender(bc.mesh.position, bc.team);
-    if (!near.def || near.dist > 3) return;
+    if (!near.def || near.dist > 3.2) return;
+
+    const dir = FB.forwardDir(bc.team);
+    const relZ = near.def.mesh.position.z - bc.mesh.position.z;
+    const relX = (near.def.mesh.position.x - bc.mesh.position.x) * dir; // +ve = defender is in front
+    const weightAdv = (bc.weightLb || 200) - (near.def.weightLb || 200);
     const ratingGap = (bc.rating - near.def.rating) / 100;
-    const chance = Math.max(0.15, Math.min(0.85, 0.3 + ratingGap + (Math.random() - 0.5) * 0.1));
-    bc.stamina = Math.max(0, bc.stamina - 15);
-    bc.jukeCooldown = 2.5;
-    if (Math.random() < chance) {
-      // Defender "misses": push defender sideways and briefly knock them down.
+
+    // Pick best move based on geometry + size matchup.
+    let move;
+    if (Math.abs(relZ) < 1.2 && relX > 0 && weightAdv > 10) {
+      move = 'truck';
+    } else if (Math.abs(relZ) < 1.8 && relX > -0.5) {
+      move = 'stiffArm';
+    } else if (relZ < 0) {
+      move = 'spinRight'; // defender to the left — spin right to escape
+    } else {
+      move = 'spinLeft';
+    }
+
+    // Move-specific success bias.
+    const moveBonus = move === 'truck' ? Math.max(0, weightAdv) / 120
+                    : move === 'stiffArm' ? 0.15
+                    : 0.2; // spins are reliable when the space is there
+    const chance = Math.max(0.2, Math.min(0.92, 0.35 + ratingGap + moveBonus + (Math.random() - 0.5) * 0.1));
+
+    bc.stamina = Math.max(0, bc.stamina - 14);
+    bc.jukeCooldown = 2.2;
+
+    const success = Math.random() < chance;
+    startJukeAnim(bc, near.def, move, success);
+
+    if (success) {
+      // Lateral/forward kick depends on the move.
+      const latSign = relZ > 0 ? -1 : 1;
+      if (move === 'spinRight') bc.mesh.position.add(new THREE.Vector3(0, 0, 1.6));
+      else if (move === 'spinLeft') bc.mesh.position.add(new THREE.Vector3(0, 0, -1.6));
+      else if (move === 'truck') bc.mesh.position.add(new THREE.Vector3(dir * 1.4, 0, 0));
+      else bc.mesh.position.add(new THREE.Vector3(0, 0, latSign * 1.3));
+
+      // Defender reacts.
       near.def.isDown = true;
-      near.def.mesh.rotation.x = -Math.PI / 4;
-      setTimeout(() => { if (near.def) { near.def.isDown = false; near.def.mesh.rotation.x = 0; } }, 900);
-      // Lateral boost for carrier
-      const lat = new THREE.Vector3(0, 0, near.def.mesh.position.z > bc.mesh.position.z ? -2 : 2);
-      bc.mesh.position.add(lat);
-      FB.state.log.push('#' + bc.player.number + ' breaks the tackle!');
-      FB.playCam.shake = 0.25;
+      const fall = move === 'truck' ? Math.PI / 3 : (move === 'stiffArm' ? Math.PI / 6 : Math.PI / 4);
+      near.def.mesh.rotation.x = -fall;
+      setTimeout(() => { if (near.def) { near.def.isDown = false; near.def.mesh.rotation.x = 0; } },
+                 move === 'truck' ? 1100 : 900);
+
+      const label = move === 'spinRight' ? 'spin right'
+                  : move === 'spinLeft' ? 'spin left'
+                  : move === 'truck' ? 'trucks the defender'
+                  : 'stiff arms #' + near.def.player.number;
+      FB.state.log.push('#' + bc.player.number + ' ' + label + '!');
+      FB.playCam.shake = move === 'truck' ? 0.35 : 0.25;
     } else {
       FB.attemptTackle(near.def, bc, true);
+    }
+  };
+
+  // Juke animation state: advanced per-frame by FB.updateJukeAnim(dt).
+  function startJukeAnim(bc, def, move, success) {
+    const baseYaw = bc.mesh.rotation.y;
+    bc.jukeAnim = {
+      move: move,
+      success: !!success,
+      t: 0,
+      dur: move === 'truck' ? 0.35 : (move === 'stiffArm' ? 0.4 : 0.55),
+      yaw0: baseYaw,
+      def: def,
+    };
+  }
+
+  FB.updateJukeAnim = function (dt) {
+    const bc = FB.ballCarrier;
+    if (!bc || !bc.jukeAnim) return;
+    const ja = bc.jukeAnim;
+    ja.t += dt;
+    const p = Math.min(1, ja.t / ja.dur);
+
+    if (ja.move === 'spinRight') {
+      bc.mesh.rotation.y = ja.yaw0 + Math.PI * 2 * p;
+    } else if (ja.move === 'spinLeft') {
+      bc.mesh.rotation.y = ja.yaw0 - Math.PI * 2 * p;
+    } else if (ja.move === 'truck') {
+      // Forward lean peaks mid-animation.
+      const lean = Math.sin(p * Math.PI) * 0.4;
+      bc.mesh.rotation.x = -lean; // shoulder dips into the tackler
+    } else if (ja.move === 'stiffArm') {
+      // Brief lateral twist as the arm extends.
+      const twist = Math.sin(p * Math.PI) * 0.2;
+      bc.mesh.rotation.z = twist;
+    }
+
+    if (p >= 1) {
+      // Snap back to clean orientation — final yaw stays on the forward run axis.
+      bc.mesh.rotation.x = 0;
+      bc.mesh.rotation.z = 0;
+      bc.mesh.rotation.y = ja.yaw0;
+      bc.jukeAnim = null;
     }
   };
 
