@@ -479,6 +479,11 @@
   // Adaptive picker that reads FB.state.userTendencies to counter the human.
   // Defense against a pass-heavy user tilts toward zone/dime/prevent; against run, toward base/goal-line/blitz.
   // Offense against a user who blitzes a lot tilts toward screens/quick passes; against zone, toward verticals.
+  // Difficulty tiers tighten the AI's pick:
+  //   - freshman: top-6, heavy randomness
+  //   - jv: top-4
+  //   - varsity: top-3
+  //   - all-state: top-2, also boosts harder concepts (blitzes, man coverage)
   FB.pickAIPlayAdaptive = function (side) {
     const list = FB.PLAYBOOK[side];
     const t = (FB.state && FB.state.userTendencies) || { run: 0, pass: 0, left: 0, right: 0, blitz: 0, zone: 0 };
@@ -488,13 +493,25 @@
     const leftBias = ((t.left || 0) - (t.right || 0)) / Math.max(1, (t.left || 0) + (t.right || 0));
     const blitzBias = ((t.blitz || 0) - (t.zone || 0)) / Math.max(1, (t.blitz || 0) + (t.zone || 0));
 
+    const diff = (FB.state && FB.state.difficulty) || 'varsity';
+    const diffTable = {
+      freshman:  { top: 6, noise: 1.0, hardBoost: -0.3 },
+      jv:        { top: 4, noise: 0.7, hardBoost: 0.0 },
+      varsity:   { top: 3, noise: 0.5, hardBoost: 0.3 },
+      'all-state':{ top: 2, noise: 0.25, hardBoost: 0.8 },
+    };
+    const cfg = diffTable[diff] || diffTable.varsity;
+
     const scored = list.map((p) => {
-      let s = Math.random() * 0.6; // base randomness
+      let s = Math.random() * cfg.noise; // base randomness scales with difficulty
       if (side === 'defense') {
         const isRunStopper = /goal|blitz/i.test(p.name) || /mlb_blitz|safety_blitz|goal_line/.test(p.id);
         const isPassDef = /nickel|dime|cover2|cover3|cover4|prevent|zone_blitz/i.test(p.id);
+        const isHardD = /blitz|cover0|cover1|press|man/i.test(p.id) || /blitz|press/i.test(p.name);
         if (isRunStopper) s += runBias * 1.6;
         if (isPassDef) s += passBias * 1.6;
+        // Harder difficulty favors tougher defenses (blitzes, tight man, etc.)
+        if (isHardD) s += cfg.hardBoost;
         // If user favored a side on runs, prefer blitzes to that side.
         if (/strong/i.test(p.id) && leftBias < -0.2) s += 0.5;
         if (/weak/i.test(p.id) && leftBias > 0.2) s += 0.5;
@@ -509,8 +526,7 @@
       return { p, s };
     });
     scored.sort((a, b) => b.s - a.s);
-    // Top-3 weighted pick for variety.
-    const top = scored.slice(0, Math.min(3, scored.length));
+    const top = scored.slice(0, Math.min(cfg.top, scored.length));
     return top[Math.floor(Math.random() * top.length)].p;
   };
 

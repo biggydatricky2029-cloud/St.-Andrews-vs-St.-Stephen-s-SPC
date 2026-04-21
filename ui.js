@@ -542,24 +542,49 @@
     let out = '';
     const spots = formationSpots();
     const routes = play.routes || {};
-    // Draw routes first (behind the player chips).
+    const isRun = play.type === 'run';
+    // O-line and any skill position without a route gets a small "BLK" tick
+    // on run plays so the diagram still shows everyone's job.
+    if (isRun) {
+      for (const sp of spots) {
+        if (routes[sp.slot] && routes[sp.slot].length) continue;
+        if (sp.slot === 'QB' && play.ballTo === 'QB') continue;
+        const p = fieldToSvg(sp.dx, sp.dz);
+        // Short forward stem indicating a block / run-blocking engage.
+        const end = fieldToSvg(sp.dx + 1.2, sp.dz);
+        out += '<line x1="' + p.x + '" y1="' + p.y + '" x2="' + end.x + '" y2="' + end.y + '" stroke="#e0e6ef" stroke-opacity="0.55" stroke-width="1.4" stroke-linecap="round"/>';
+      }
+    }
+    // Draw routes (ball carrier's route gets heavier stroke for runs).
     for (const sp of spots) {
       const rt = routes[sp.slot];
       if (!rt || !rt.length) continue;
-      const color = ROUTE_COLORS[sp.slot] || '#ffffff';
+      const isCarrier = isRun && (play.ballTo ? sp.slot === play.ballTo : sp.slot === 'RB');
+      const color = isCarrier ? '#ff9a1f' : (ROUTE_COLORS[sp.slot] || '#ffffff');
+      const width = isCarrier ? 3.6 : 2.6;
       const start = fieldToSvg(sp.dx, sp.dz);
       let pts = start.x + ',' + start.y;
       for (const w of rt) {
         const p = fieldToSvg(sp.dx + w.dx, sp.dz + w.dz);
         pts += ' ' + p.x + ',' + p.y;
       }
-      out += '<polyline points="' + pts + '" fill="none" stroke="' + color + '" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#pd_' + colorToMarkerId(color) + ')"/>';
+      out += '<polyline points="' + pts + '" fill="none" stroke="' + color + '" stroke-width="' + width + '" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#pd_' + colorToMarkerId(color) + ')"/>';
     }
     // Ball-to arrow for runs without a route (like QB sneak).
-    if (play.type === 'run' && play.ballTo === 'QB' && !routes['QB']) {
+    if (isRun && play.ballTo === 'QB' && !routes['QB']) {
       const start = fieldToSvg(-5, 0);
       const end = fieldToSvg(2, 0);
-      out += '<line x1="' + start.x + '" y1="' + start.y + '" x2="' + end.x + '" y2="' + end.y + '" stroke="#4cc9f0" stroke-width="2.6" stroke-linecap="round" marker-end="url(#pd_blue)"/>';
+      out += '<line x1="' + start.x + '" y1="' + start.y + '" x2="' + end.x + '" y2="' + end.y + '" stroke="#ff9a1f" stroke-width="3.6" stroke-linecap="round" marker-end="url(#pd_orange)"/>';
+    }
+    // Handoff tick from QB to ball carrier for run plays.
+    if (isRun && play.ballTo && play.ballTo !== 'QB') {
+      const qbSp = spots.find(s => s.slot === 'QB');
+      const bcSp = spots.find(s => s.slot === play.ballTo) || spots.find(s => s.slot === 'RB');
+      if (qbSp && bcSp) {
+        const a = fieldToSvg(qbSp.dx, qbSp.dz);
+        const b = fieldToSvg(bcSp.dx, bcSp.dz);
+        out += '<line x1="' + a.x + '" y1="' + a.y + '" x2="' + b.x + '" y2="' + b.y + '" stroke="#ffd400" stroke-width="1.6" stroke-dasharray="3 3" stroke-linecap="round"/>';
+      }
     }
     // Draw player chips on top.
     for (const sp of spots) {
@@ -633,7 +658,7 @@
   }
 
   // ---- Bootstrap ----
-  const BUILD_TAG = 'BUILD-20260421d';
+  const BUILD_TAG = 'BUILD-20260421f';
   function paintVersionTag() {
     try {
       const host = document.body;

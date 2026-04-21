@@ -397,21 +397,106 @@
       { slot: 'WR3', x: b - 2 * dir, z: -12 },
     ];
   };
+  // Build defense formation based on the currently-selected defensive play.
+  // All 11 spots stay behind the line of scrimmage (on the defense's own side):
+  // defense is on the +dir side because `dir` is the offense's forward direction.
   FB.defenseFormation = function (losX, dir) {
+    const play = (FB.selectedPlay && FB.selectedPlay.defense) || null;
+    const formation = (play && play.formation) || '4-3';
+    const assignments = (play && play.assignments) || {};
     const b = losX + 1 * dir;
-    return [
-      { slot: 'LE', x: b, z: -5 },
-      { slot: 'DT', x: b, z: -1.5 },
-      { slot: 'NT', x: b, z: 1.5 },
-      { slot: 'RE', x: b, z: 5 },
-      { slot: 'WLB', x: b + 4 * dir, z: -7 },
-      { slot: 'MLB', x: b + 4 * dir, z: 0 },
-      { slot: 'SLB', x: b + 4 * dir, z: 7 },
-      { slot: 'LCB', x: b + 2 * dir, z: -22 },
-      { slot: 'RCB', x: b + 2 * dir, z: 22 },
-      { slot: 'FS', x: b + 12 * dir, z: -6 },
-      { slot: 'SS', x: b + 12 * dir, z: 8 },
-    ];
+
+    // Start from a 4-3 base, then rewrite positions per formation / assignments.
+    const spots = {
+      LE:  { x: b,              z: -5 },
+      DT:  { x: b,              z: -1.5 },
+      NT:  { x: b,              z: 1.5 },
+      RE:  { x: b,              z: 5 },
+      WLB: { x: b + 4 * dir,    z: -7 },
+      MLB: { x: b + 4 * dir,    z: 0 },
+      SLB: { x: b + 4 * dir,    z: 7 },
+      LCB: { x: b + 6 * dir,    z: -22 },
+      RCB: { x: b + 6 * dir,    z: 22 },
+      FS:  { x: b + 13 * dir,   z: -6 },
+      SS:  { x: b + 13 * dir,   z: 8 },
+    };
+
+    // Formation shell adjustments.
+    if (formation === 'nickel') {
+      // Pull SLB down to a slot-CB role; add a 5th DB look by widening the OLB.
+      spots.SLB.x = b + 5 * dir; spots.SLB.z = 12;
+      spots.WLB.x = b + 5 * dir; spots.WLB.z = -12;
+      spots.MLB.x = b + 4 * dir; spots.MLB.z = 0;
+    } else if (formation === 'dime') {
+      // Pull both OLBs out wide and deep — 6-DB look.
+      spots.WLB.x = b + 6 * dir; spots.WLB.z = -14;
+      spots.SLB.x = b + 6 * dir; spots.SLB.z = 14;
+      spots.MLB.x = b + 5 * dir; spots.MLB.z = 0;
+    } else if (formation === '3-4') {
+      // Drop the NT back as a stand-up OLB; tighten the front 3.
+      spots.NT.x = b + 3 * dir; spots.NT.z = 0;
+      spots.DT.z = -2.5; spots.RE.z = 5.5; spots.LE.z = -5.5;
+    } else if (formation === 'goal-line') {
+      // 5 DL, 3 LBs crashing, 3 deep — packed inside the tackle box.
+      spots.LE.z = -6; spots.DT.z = -2; spots.NT.z = 2; spots.RE.z = 6;
+      spots.MLB.x = b + 1 * dir; spots.MLB.z = 0;
+      spots.WLB.x = b + 1 * dir; spots.WLB.z = -4;
+      spots.SLB.x = b + 1 * dir; spots.SLB.z = 4;
+      spots.LCB.x = b + 1 * dir; spots.LCB.z = -12;
+      spots.RCB.x = b + 1 * dir; spots.RCB.z = 12;
+      spots.FS.x = b + 6 * dir;  spots.FS.z = 0;
+      spots.SS.x = b + 2 * dir;  spots.SS.z = 7;
+    } else if (formation === 'prevent') {
+      // 3-man rush, 8 in coverage deep.
+      spots.LE.x = b;            spots.LE.z = -4;
+      spots.DT.x = b;            spots.DT.z = 0;
+      spots.RE.x = b;            spots.RE.z = 4;
+      spots.NT.x = b + 8 * dir;  spots.NT.z = 0;  // NT drops as spy
+      spots.WLB.x = b + 10 * dir; spots.WLB.z = -12;
+      spots.MLB.x = b + 10 * dir; spots.MLB.z = 0;
+      spots.SLB.x = b + 10 * dir; spots.SLB.z = 12;
+      spots.LCB.x = b + 16 * dir; spots.LCB.z = -18;
+      spots.RCB.x = b + 16 * dir; spots.RCB.z = 18;
+      spots.FS.x = b + 22 * dir;  spots.FS.z = -7;
+      spots.SS.x = b + 22 * dir;  spots.SS.z = 7;
+    }
+
+    // Coverage-specific tweaks from assignments.
+    const adjust = (slot, assignment) => {
+      if (!assignment) return;
+      if (assignment.type === 'man') {
+        // Man coverage: step up tight on the target.
+        if (slot === 'LCB' || slot === 'RCB') {
+          spots[slot].x = b + 1 * dir;
+        } else if (slot === 'SS' || slot === 'FS') {
+          spots[slot].x = b + 3 * dir;
+        }
+      } else if (assignment.type === 'zone') {
+        const depth = typeof assignment.depth === 'number' ? assignment.depth : 6;
+        const lateral = typeof assignment.lateral === 'number' ? assignment.lateral : 0;
+        // Clamp depth so defenders stay behind the LOS (on their own side).
+        const safeDepth = Math.max(2, depth);
+        spots[slot].x = b + safeDepth * dir;
+        // Nudge lateral toward zone center only when explicitly provided.
+        if (typeof assignment.lateral === 'number') spots[slot].z = lateral;
+      } else if (assignment.type === 'rush') {
+        // Rushers line up at the LOS; keep DL where they are, blitzers creep up.
+        if (['WLB','MLB','SLB','SS','FS','LCB','RCB'].includes(slot)) {
+          spots[slot].x = b + 1 * dir;
+        }
+      }
+    };
+    for (const slot of Object.keys(spots)) adjust(slot, assignments[slot]);
+
+    // Safety: force every defender to stay on their own side of the LOS.
+    // On offense's forward direction `dir`, "defense's side" means x has the
+    // same sign of (x - losX) as `dir` (or equal). Clamp if any slipped through.
+    for (const slot of Object.keys(spots)) {
+      const ahead = (spots[slot].x - losX) * dir;
+      if (ahead < 0.5) spots[slot].x = losX + 0.5 * dir;
+    }
+
+    return Object.keys(spots).map(slot => ({ slot, x: spots[slot].x, z: spots[slot].z }));
   };
 
   FB.placePlayer = function (ent, x, z, role) {
