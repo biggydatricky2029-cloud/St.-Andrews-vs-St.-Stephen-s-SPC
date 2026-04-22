@@ -107,6 +107,14 @@
     s.score[s.possession] += 6;
     FB.state.log.push('TOUCHDOWN ' + FB.teams[s.possession].shortName + '!');
     FB.updateHUD && FB.updateHUD();
+
+    // Only the user picks between XP and 2-pt for their own TDs. When the
+    // opposing team scores, the AI makes the call for itself.
+    if (s.possession !== FB.userTeam) {
+      aiPostTouchdown();
+      return;
+    }
+
     const modal = document.getElementById('xpPrompt');
     modal.classList.remove('hidden');
     const kickBtn = document.getElementById('xpKick');
@@ -122,6 +130,43 @@
     kickBtn.addEventListener('click', onKick);
     twoBtn.addEventListener('click', onTwo);
   };
+
+  // AI decides XP vs 2-pt based on score differential and clock.
+  function aiPostTouchdown() {
+    const s = FB.state;
+    const opp = s.possession === 'home' ? 'away' : 'home';
+    const lead = s.score[s.possession] - s.score[opp]; // includes the TD just scored
+    const late = s.quarter >= 4 && s.clockSeconds < 360;
+    const veryLate = s.quarter >= 4 && s.clockSeconds < 180;
+
+    // Gaps that turn into a meaningful swing with a successful 2-pt.
+    // Trailing or tied: 2 (down 1 → tie), 5 (down 5 → down 3), 8 (down 2 → tie),
+    //                   11 (down 5 → down 3 FG), 15 (down 9 → down 7 FG+TD).
+    // Leading by 1/5/12: 2-pt extends to two-score cushion.
+    const clutchGaps = [2, 5, 8, 11, 15];
+    const leadGaps = [1, 5, 12];
+    let goForTwo = false;
+    if (veryLate && (clutchGaps.includes(-lead) || clutchGaps.includes(lead))) {
+      goForTwo = Math.random() < 0.85;
+    } else if (late && (clutchGaps.includes(-lead) || leadGaps.includes(lead))) {
+      goForTwo = Math.random() < 0.5;
+    } else {
+      goForTwo = Math.random() < 0.06; // rare surprise early
+    }
+
+    const teamName = FB.teams[s.possession].shortName;
+    setTimeout(() => {
+      if (goForTwo) {
+        s.twoPointAttempt = true;
+        s.ballOn = 98; s.down = 1; s.distance = 2; s.los = 98;
+        FB.state.log.push(teamName + ' go for 2.');
+        FB.setupPlay(Math.random() < 0.5 ? 'pass' : 'run');
+      } else {
+        FB.state.log.push(teamName + ' lines up for XP.');
+        FB.setupPlay('xp');
+      }
+    }, 900);
+  }
 
   FB.updateHUD = function () {
     const s = FB.state;

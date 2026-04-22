@@ -262,17 +262,63 @@
   // Current "hand" of 3 random plays offered to the user per side.
   let ppHand = { offense: [], defense: [] };
 
-  function pickRandomHand(side) {
+  function pickRandomHand(side, opts) {
     const list = (FB.PLAYBOOK && FB.PLAYBOOK[side]) || [];
     if (!list.length) return [];
-    const pool = list.slice();
-    const hand = [];
-    const n = Math.min(PP_HAND_SIZE, pool.length);
-    for (let i = 0; i < n; i++) {
-      const idx = Math.floor(Math.random() * pool.length);
-      hand.push(pool.splice(idx, 1)[0]);
+    opts = opts || {};
+
+    // Defense hand is biased to counter the AI's offensive call. Offense is
+    // drawn uniformly so the user isn't railroaded into one style.
+    const scorer = (side === 'defense')
+      ? (p) => scoreDefenseAgainst(p, opts.oppPlay, opts.ballOn)
+      : (p) => 1 + Math.random() * 0.4;
+
+    const scored = list.map(p => ({ p, s: scorer(p) }));
+    scored.sort((a, b) => b.s - a.s);
+
+    // Shuffle the top candidates so the user still gets variety.
+    const topN = Math.min(Math.max(PP_HAND_SIZE + 3, 6), scored.length);
+    const top = scored.slice(0, topN).map(x => x.p);
+    for (let i = top.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      const tmp = top[i]; top[i] = top[j]; top[j] = tmp;
     }
-    return hand;
+    return top.slice(0, Math.min(PP_HAND_SIZE, top.length));
+  }
+
+  function scoreDefenseAgainst(p, offPlay, ballOn) {
+    let s = 1 + Math.random() * 0.4;
+    if (!offPlay) return s;
+    const fm = (p.formation || '').toLowerCase();
+    const tag = ((p.name || '') + ' ' + (p.id || '')).toLowerCase();
+    const isRun = offPlay.type === 'run';
+    const offTag = ((offPlay.name || '') + ' ' + (offPlay.id || '')).toLowerCase();
+    const isShort = typeof ballOn === 'number' && ballOn >= 95;
+    const isDeep = /verticals?|fade|bomb|post|deep|four_verts|vert/.test(offTag);
+    const isBlitzD = /blitz|zero|press|man/.test(tag);
+    const isCoverD = /cover|prevent|zone|shell/.test(tag) || fm === 'dime' || fm === 'nickel' || fm === 'prevent';
+    const isRunStopD = fm === '4-3' || fm === '3-4' || fm === 'goal-line' || /stack|run|engage/.test(tag);
+    const isGoalLineD = fm === 'goal-line' || /goal/.test(tag);
+
+    if (isRun) {
+      if (isRunStopD) s += 2.2;
+      if (isBlitzD) s += 1.0;
+      if (fm === 'dime' || fm === 'prevent') s -= 1.4;
+    } else {
+      if (isCoverD) s += 2.0;
+      if (isDeep && /prevent|cover3|cover_3|dime/.test(tag + ' ' + fm)) s += 1.2;
+      if (!isDeep && isBlitzD) s += 0.8;
+      if (isGoalLineD && !isShort) s -= 1.0;
+    }
+    if (isShort && (isGoalLineD || isBlitzD)) s += 2.0;
+    return s;
+  }
+
+  function handContext(side) {
+    return {
+      oppPlay: side === 'defense' ? FB.selectedPlay.offense : FB.selectedPlay.defense,
+      ballOn: FB.state && FB.state.ballOn,
+    };
   }
 
   function wirePlayPicker() {
@@ -281,7 +327,7 @@
       tabs.forEach(x => x.classList.remove('active'));
       t.classList.add('active');
       ppSide = t.dataset.pp;
-      if (!ppHand[ppSide] || !ppHand[ppSide].length) ppHand[ppSide] = pickRandomHand(ppSide);
+      if (!ppHand[ppSide] || !ppHand[ppSide].length) ppHand[ppSide] = pickRandomHand(ppSide, handContext(ppSide));
       if (!FB.selectedPlay[ppSide] || !ppHand[ppSide].includes(FB.selectedPlay[ppSide])) {
         FB.selectedPlay[ppSide] = ppHand[ppSide][0] || null;
       }
@@ -295,7 +341,7 @@
       if (ppCallback) { const cb = ppCallback; ppCallback = null; cb(); }
     });
     document.getElementById('ppShuffle').addEventListener('click', () => {
-      ppHand[ppSide] = pickRandomHand(ppSide);
+      ppHand[ppSide] = pickRandomHand(ppSide, handContext(ppSide));
       FB.selectedPlay[ppSide] = ppHand[ppSide][0] || FB.selectedPlay[ppSide];
       renderPlayList();
     });
@@ -400,8 +446,9 @@
         t.classList.toggle('active', isUsersSide);
         t.style.display = isUsersSide ? '' : 'none';
       });
-      // Fresh hand of 3 random plays every time the picker opens.
-      ppHand[ppSide] = pickRandomHand(ppSide);
+      // Fresh hand of 3 plays every time the picker opens. When the user is
+      // on defense, the hand is biased to counter the AI's offensive call.
+      ppHand[ppSide] = pickRandomHand(ppSide, handContext(ppSide));
       FB.selectedPlay[ppSide] = ppHand[ppSide][0] || FB.PLAYBOOK[ppSide][0];
       renderPlayList();
     } catch (e) {
@@ -662,7 +709,7 @@
   }
 
   // ---- Bootstrap ----
-  const BUILD_TAG = 'BUILD-20260422d';
+  const BUILD_TAG = 'BUILD-20260422e';
   function paintVersionTag() {
     try {
       const host = document.body;
