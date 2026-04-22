@@ -82,10 +82,14 @@
     FB.ball.position.copy(bc.mesh.position).add(new THREE.Vector3(0, bc.carryY || 2.2, 0.3));
   };
 
+  const OL_SLOTS = ['LT','LG','C','RG','RT'];
+
   // Non-ball-carrier offense: receivers run routes, blockers engage.
   FB.updateOffenseOthers = function (dt) {
     const pos = FB.state.possession;
     if (FB.state.phase !== 'play') return;
+    const dir = FB.forwardDir(pos);
+    const losX = FB.losLine ? FB.losLine.position.x : 0;
     for (const ent of FB.offenseOf(pos)) {
       if (ent === FB.ballCarrier) continue;
       if (ent.isDown) continue;
@@ -95,6 +99,21 @@
           ent.routeIdx += 1;
         }
         if (wp) steerToward(ent, wp, dt, 0.88);
+      } else if (OL_SLOTS.includes(ent.role)) {
+        // Offensive line: actively seek out the nearest unblocked rusher and
+        // wall them off, positioning between the rusher and the QB.
+        const nearest = FB.nearestDefender(ent.mesh.position, pos);
+        if (nearest.def && nearest.dist < 7) {
+          const d = nearest.def.mesh.position;
+          const intercept = new THREE.Vector3(d.x - dir * 0.6, 0, d.z);
+          steerToward(ent, intercept, dt, 0.82);
+          // Lock onto the rusher once close so they stick with the block.
+          if (nearest.dist < 1.6) ent.blockTarget = nearest.def;
+        } else {
+          // No one to block — drift back to protect the pocket.
+          const pocket = new THREE.Vector3(losX - dir * 1.2, 0, ent.mesh.position.z);
+          steerToward(ent, pocket, dt, 0.45);
+        }
       } else {
         const nearest = FB.nearestDefender(ent.mesh.position, pos);
         if (nearest.def && nearest.dist < 4) {
@@ -187,6 +206,33 @@
         // Kickoff coverage sprints so the returner gets swarmed within seconds.
         const koChase = FB.specialMode === 'kickoff' ? 1.45 : 1;
         steerToward(ent, target, dt, reaction * 0.95 * koChase);
+
+        // OL engagement: if a blocker is walling this defender off before
+        // they've sneaked past the LOS, drag their velocity heavily. They
+        // stay stuck until they accumulate enough engage-time to shed the
+        // block. High-rated OL hold longer than the DL's shed budget.
+        const isRusher = !a || a.type === 'rush' || a.type === 'blitz';
+        const pastLOS = (ent.mesh.position.x - losX) * dir > 0.6;
+        if (isRusher && !pastLOS && FB.specialMode !== 'kickoff') {
+          const block = nearestBlocker(ent, pos);
+          if (block.blocker && block.dist < 1.9) {
+            const olR = block.blocker.rating || 70;
+            const dlR = ent.rating || 70;
+            // Base hold ~2.2s, swung ±1s by the OL/DL rating gap.
+            const holdSec = Math.max(1.2, Math.min(3.2, 2.2 + (olR - dlR) / 45));
+            ent.blockedTime = (ent.blockedTime || 0) + dt;
+            if (ent.blockedTime < holdSec) {
+              // Engaged — heavy damp and a small push back.
+              ent.vel.multiplyScalar(0.18);
+              ent.mesh.position.x -= dir * dt * 0.6;
+            } else {
+              // Shed: small celebratory burst forward toward the QB.
+              ent.vel.x += dir * 1.2 * dt * ent.accel;
+            }
+          } else {
+            ent.blockedTime = Math.max(0, (ent.blockedTime || 0) - dt * 2);
+          }
+        }
       }
 
       // Tackle check (any defender near the ball carrier). Wider reach on
@@ -198,6 +244,18 @@
       }
     }
   };
+
+  function nearestBlocker(def, offTeam) {
+    let best = null, bd = Infinity;
+    const list = FB.activePlayers && FB.activePlayers[offTeam] || [];
+    for (const o of list) {
+      if (!o.mesh || !o.mesh.visible || o.isDown) continue;
+      if (!OL_SLOTS.includes(o.role)) continue;
+      const d = o.mesh.position.distanceTo(def.mesh.position);
+      if (d < bd) { bd = d; best = o; }
+    }
+    return { blocker: best, dist: bd };
+  }
 
   FB.switchDefender = function () {
     const defTeam = FB.state.possession === 'home' ? 'away' : 'home';
@@ -246,13 +304,20 @@
       FB.ballState.inAir = false;
       if (FB.onBallLanded) FB.onBallLanded();
     }
-    // Catch check if a receiver is the target
+    // Catch check: the ball is caught when it enters the receiver's catch
+    // pocket — close in the horizontal plane and near hand/chest height.
     if (FB.ballState.targetPlayer && FB.ballState.kind === 'pass') {
       const tp = FB.ballState.targetPlayer;
-      if (FB.ball.position.distanceTo(tp.mesh.position) < 1.2) {
-        FB.ballState.inAir = false;
-        FB.attachBallTo(tp);
-        if (FB.onPassCaught) FB.onPassCaught(tp);
+      if (tp.mesh && tp.mesh.visible && !tp.isDown) {
+        const dx = FB.ball.position.x - tp.mesh.position.x;
+        const dz = FB.ball.position.z - tp.mesh.position.z;
+        const dy = FB.ball.position.y - ((tp.mesh.position.y || 0) + 2.1);
+        const horiz = Math.hypot(dx, dz);
+        if (horiz < 1.5 && Math.abs(dy) < 1.4) {
+          FB.ballState.inAir = false;
+          FB.attachBallTo(tp);
+          if (FB.onPassCaught) FB.onPassCaught(tp);
+        }
       }
     }
   };

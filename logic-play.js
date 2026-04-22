@@ -112,6 +112,7 @@
     for (const e of FB.activePlayers[defTeam]) {
       if (!e.mesh.visible) continue;
       e.assignment = (def.assignments && def.assignments[e.role]) || { type: 'rush' };
+      e.blockedTime = 0;
     }
   }
 
@@ -157,25 +158,39 @@
 
   // QB throws to chosen receiver.
   // passType: 'lob' (default) = slower, higher arc; 'bullet' = fast, flatter.
+  // The ball is aimed at the receiver's hands (chest height) at the receiver's
+  // predicted position when the ball arrives, so the catch just works.
   FB.throwPass = function (receiver, passType) {
     if (!receiver || !FB.qb || FB.ballCarrier !== FB.qb) return;
     const type = passType === 'bullet' ? 'bullet' : 'lob';
+    const speed = type === 'bullet' ? 36 : 22;    // horizontal m/s
+    const catchY = 2.1;                           // receiver's hand height
     const from = FB.ball.position.clone();
-    const leadScale = type === 'bullet' ? 0.35 : 0.6;
-    const lead = receiver.vel.clone().multiplyScalar(leadScale);
-    const heightOffset = type === 'bullet' ? 1.6 : 2.4;
-    const tgt = receiver.mesh.position.clone().add(lead).add(new THREE.Vector3(0, heightOffset, 0));
-    const dist = from.distanceTo(tgt);
-    const flight = type === 'bullet' ? Math.max(0.3, dist / 36) : Math.max(0.6, dist / 20);
+
+    // Iterate a few times to converge on a lead that matches the ball's
+    // actual flight time at current horizontal speed.
+    let tgt = receiver.mesh.position.clone().add(new THREE.Vector3(0, catchY, 0));
+    for (let i = 0; i < 3; i++) {
+      const dxy = Math.hypot(tgt.x - from.x, tgt.z - from.z);
+      const flightGuess = Math.max(0.25, dxy / speed);
+      tgt.copy(receiver.mesh.position)
+         .add(receiver.vel.clone().multiplyScalar(flightGuess))
+         .add(new THREE.Vector3(0, catchY, 0));
+    }
+    const dxy = Math.hypot(tgt.x - from.x, tgt.z - from.z);
+    const flight = Math.max(0.25, dxy / speed);
+
     FB.ballState.carried = false;
     FB.ballState.inAir = true;
     FB.ballState.airTime = 0;
     FB.ballState.kind = 'pass';
     FB.ballState.targetPlayer = receiver;
     FB.ballCarrier = null;
+    // Vertical solve: y(t) = from.y + vy*t - 0.5*g*t^2; want y(flight)=tgt.y
+    const g = 9.8;
     FB.ballState.vel.set(
       (tgt.x - from.x) / flight,
-      (tgt.y - from.y) / flight + 0.5 * 9.8 * flight,
+      (tgt.y - from.y) / flight + 0.5 * g * flight,
       (tgt.z - from.z) / flight
     );
     FB.state.log.push((type === 'bullet' ? 'Bullet' : 'Lob') + ' pass to #' + receiver.player.number);
