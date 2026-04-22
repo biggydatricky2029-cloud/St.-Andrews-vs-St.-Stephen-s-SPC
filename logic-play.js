@@ -432,6 +432,7 @@
     let gain = 0;
     let newBallOn = s.ballOn;
     let endZ = 0;
+    let incomplete = false;
 
     if (FB.ballCarrier) {
       const yardNow = FB.yardFromBallX(FB.ballCarrier.mesh.position.x, s.possession);
@@ -444,13 +445,18 @@
         return;
       }
     } else {
+      incomplete = true;
       gain = 0; newBallOn = s.ballOn;
       endZ = FB.ball ? FB.ball.position.z : 0;
       FB.state.log.push('Incomplete.');
     }
 
     s.ballOn = newBallOn;
-    s.spotZ = FB.computeSpotZ ? FB.computeSpotZ(endZ) : 0;
+    // On an incomplete pass, the ref returns the ball to where the play
+    // started — keep the pre-snap lateral spot instead of re-hashing.
+    if (!incomplete) {
+      s.spotZ = FB.computeSpotZ ? FB.computeSpotZ(endZ) : 0;
+    }
 
     const losX = FB.ballXFromYard(s.ballOn, s.possession);
     const fromPos = FB.ball
