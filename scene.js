@@ -60,20 +60,28 @@ window.FB = window.FB || {};
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    // Broadcast-style color pipeline: sRGB output + ACES filmic tonemap.
+    // (r128 uses outputEncoding/sRGBEncoding — equivalent to outputColorSpace in newer releases.)
+    renderer.outputEncoding = THREE.sRGBEncoding;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.05;
     renderer.setClearColor(0x0a1020, 1);
 
     const scene = new THREE.Scene();
-    scene.fog = new THREE.Fog(0x8cbbe0, 80, 260);
+    scene.fog = new THREE.Fog(0x7fa7cf, 110, 320);
     const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.5, 500);
     camera.position.set(-70, 18, 0); camera.lookAt(0, 2, 0);
 
-    const hemi = new THREE.HemisphereLight(0xbcd9f7, 0x3d5a3d, 0.75);
+    const hemi = new THREE.HemisphereLight(0xcde4ff, 0x30502e, 0.85);
     scene.add(hemi);
-    const sun = new THREE.DirectionalLight(0xffe8c0, 0.95);
-    sun.position.set(-40, 60, 30); sun.castShadow = true;
-    sun.shadow.mapSize.set(1024, 1024);
-    sun.shadow.camera.left = -80; sun.shadow.camera.right = 80;
-    sun.shadow.camera.top = 80; sun.shadow.camera.bottom = -80;
+    const sun = new THREE.DirectionalLight(0xfff0d4, 1.25);
+    sun.position.set(-60, 90, 40); sun.castShadow = true;
+    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.camera.left = -90; sun.shadow.camera.right = 90;
+    sun.shadow.camera.top = 90;  sun.shadow.camera.bottom = -90;
+    sun.shadow.camera.near = 1;  sun.shadow.camera.far = 220;
+    sun.shadow.bias = -0.0003;
+    sun.shadow.normalBias = 0.02;
     scene.add(sun);
 
     FB.scene = scene; FB.camera = camera; FB.renderer = renderer;
@@ -105,44 +113,159 @@ window.FB = window.FB || {};
     FB.scene.add(new THREE.Mesh(geom, mat));
   }
 
+  // ---- Turf (PBR): baked albedo + tiling grass-blade normal map ----
+
+  // Full-field albedo at ~2048×1024. Mowing stripes at 5-yard bands, darker
+  // wear along the hash rows and between the tackles, plus per-pixel noise
+  // so the ground reads as grass rather than a flat plane.
   function mowedTurfTexture() {
-    const { FIELD_LEN } = FB.const;
-    const c = document.createElement('canvas'); c.width = 1024; c.height = 512;
+    const { FIELD_LEN, FIELD_WID, EZ, HASH_Z } = FB.const;
+    const w = 2048, h = 1024;
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
     const ctx = c.getContext('2d');
-    const stripePx = c.width / (FIELD_LEN / 5);
-    for (let i = 0; i < FIELD_LEN / 5; i++) {
-      ctx.fillStyle = i % 2 === 0 ? '#2f7a3a' : '#256832';
-      ctx.fillRect(i * stripePx, 0, stripePx + 1, c.height);
+
+    // Base turf — vertical gradient to break up the flat look.
+    const base = ctx.createLinearGradient(0, 0, 0, h);
+    base.addColorStop(0, '#2e6d38');
+    base.addColorStop(0.5, '#2b6a35');
+    base.addColorStop(1, '#286131');
+    ctx.fillStyle = base;
+    ctx.fillRect(0, 0, w, h);
+
+    // Mowing stripes every 5 yards across the full field length.
+    const numStripes = FIELD_LEN / 5;           // 24
+    const stripeW = w / numStripes;
+    for (let i = 0; i < numStripes; i++) {
+      ctx.fillStyle = i % 2 === 0
+        ? 'rgba(255,255,255,0.055)'             // lighter band
+        : 'rgba(0,0,0,0.12)';                   // darker band
+      ctx.fillRect(i * stripeW, 0, stripeW + 1, h);
     }
-    for (let n = 0; n < 2400; n++) {
-      ctx.fillStyle = 'rgba(255,255,255,' + (Math.random() * 0.04) + ')';
-      ctx.fillRect(Math.random() * c.width, Math.random() * c.height, 1, 1);
+
+    // Worn paths along each hash row (between-the-tackles traffic).
+    const yAt = (z) => ((z + FIELD_WID / 2) / FIELD_WID) * h;
+    const ezPx = (EZ / FIELD_LEN) * w;
+    const wearBand = (zCenter, zHalf, alpha) => {
+      ctx.fillStyle = 'rgba(20,40,22,' + alpha + ')';
+      ctx.fillRect(ezPx, yAt(zCenter - zHalf), w - 2 * ezPx, (2 * zHalf / FIELD_WID) * h);
+    };
+    wearBand(HASH_Z, 1.3, 0.16);
+    wearBand(-HASH_Z, 1.3, 0.16);
+    wearBand(0, 2.1, 0.09);
+
+    // Darker "logo" shadow near the 50 (fakes compacted center field).
+    const cx = w / 2, cy = h / 2;
+    const rg = ctx.createRadialGradient(cx, cy, 0, cx, cy, h * 0.28);
+    rg.addColorStop(0, 'rgba(0,0,0,0.10)');
+    rg.addColorStop(1, 'rgba(0,0,0,0.0)');
+    ctx.fillStyle = rg; ctx.fillRect(0, 0, w, h);
+
+    // High-density grass-blade noise (alternating bright/dark single pixels).
+    for (let n = 0; n < 140000; n++) {
+      const x = Math.random() * w;
+      const y = Math.random() * h;
+      if (Math.random() < 0.55) {
+        ctx.fillStyle = 'rgba(0,0,0,' + (Math.random() * 0.14) + ')';
+      } else {
+        ctx.fillStyle = 'rgba(220,240,190,' + (Math.random() * 0.10) + ')';
+      }
+      ctx.fillRect(x, y, 1, 1);
     }
+
     const tex = new THREE.CanvasTexture(c);
     tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+    tex.encoding = THREE.sRGBEncoding;
+    tex.anisotropy = 8;
+    return tex;
+  }
+
+  // Tiling grass-blade normal map derived from a smoothed noise heightfield.
+  function turfNormalMap() {
+    const size = 256;
+    const c = document.createElement('canvas'); c.width = size; c.height = size;
+    const ctx = c.getContext('2d');
+    // Step 1: random height
+    const heightA = new Float32Array(size * size);
+    for (let i = 0; i < heightA.length; i++) heightA[i] = Math.random();
+    // Step 2: two passes of 3x3 box blur (wrapping) so the gradient isn't
+    // per-pixel noise.
+    const blur = (src) => {
+      const out = new Float32Array(src.length);
+      for (let y = 0; y < size; y++) {
+        for (let x = 0; x < size; x++) {
+          let s = 0;
+          for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+              const xx = (x + dx + size) % size;
+              const yy = (y + dy + size) % size;
+              s += src[yy * size + xx];
+            }
+          }
+          out[y * size + x] = s / 9;
+        }
+      }
+      return out;
+    };
+    const height = blur(blur(heightA));
+    // Step 3: Sobel-ish gradient → normal.
+    const img = ctx.createImageData(size, size);
+    const strength = 5.0;
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const xl = (x - 1 + size) % size, xr = (x + 1) % size;
+        const yt = (y - 1 + size) % size, yb = (y + 1) % size;
+        const dx = (height[y * size + xr] - height[y * size + xl]) * strength;
+        const dy = (height[yb * size + x] - height[yt * size + x]) * strength;
+        const nx = -dx, ny = -dy, nz = 1;
+        const len = Math.hypot(nx, ny, nz);
+        const i = (y * size + x) * 4;
+        img.data[i + 0] = Math.floor((nx / len * 0.5 + 0.5) * 255);
+        img.data[i + 1] = Math.floor((ny / len * 0.5 + 0.5) * 255);
+        img.data[i + 2] = Math.floor((nz / len * 0.5 + 0.5) * 255);
+        img.data[i + 3] = 255;
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+    const tex = new THREE.CanvasTexture(c);
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    // ~40 × 18 tiles across the 120×53.3yd field keeps each tile ≈3 yd square.
+    tex.repeat.set(40, 18);
+    tex.anisotropy = 8;
     return tex;
   }
 
   function endZoneTexture(label, primary, secondary) {
-    const c = document.createElement('canvas'); c.width = 512; c.height = 256;
+    const c = document.createElement('canvas'); c.width = 1024; c.height = 512;
     const ctx = c.getContext('2d');
     ctx.fillStyle = primary; ctx.fillRect(0, 0, c.width, c.height);
+    // Subtle inner glow so the end zone doesn't read as a flat poster color.
+    const g = ctx.createRadialGradient(c.width / 2, c.height / 2, 10, c.width / 2, c.height / 2, c.width / 2);
+    g.addColorStop(0, 'rgba(255,255,255,0.08)');
+    g.addColorStop(1, 'rgba(0,0,0,0.25)');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, c.width, c.height);
     ctx.fillStyle = secondary;
-    ctx.font = 'bold 80px -apple-system, Helvetica, sans-serif';
+    ctx.font = 'bold 160px system-ui, -apple-system, Helvetica, sans-serif';
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText(label.toUpperCase(), c.width / 2, c.height / 2);
-    return new THREE.CanvasTexture(c);
+    const t = new THREE.CanvasTexture(c);
+    t.encoding = THREE.sRGBEncoding;
+    t.anisotropy = 8;
+    return t;
   }
 
   function yardNumberTexture(n) {
-    const c = document.createElement('canvas'); c.width = 128; c.height = 128;
+    const c = document.createElement('canvas'); c.width = 256; c.height = 256;
     const ctx = c.getContext('2d');
     ctx.clearRect(0, 0, c.width, c.height);
     ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 72px -apple-system, Helvetica, sans-serif';
+    ctx.font = 'bold 150px system-ui, -apple-system, Helvetica, sans-serif';
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText(String(n), c.width / 2, c.height / 2);
-    const t = new THREE.CanvasTexture(c); t.transparent = true; return t;
+    const t = new THREE.CanvasTexture(c);
+    t.transparent = true;
+    t.encoding = THREE.sRGBEncoding;
+    t.anisotropy = 8;
+    return t;
   }
 
   function createField() {
@@ -152,17 +275,33 @@ window.FB = window.FB || {};
     FB.fieldGroup = group;
 
     const turf = new THREE.Mesh(
-      new THREE.PlaneGeometry(FIELD_LEN, FIELD_WID),
-      new THREE.MeshLambertMaterial({ map: mowedTurfTexture() })
+      new THREE.PlaneGeometry(FIELD_LEN, FIELD_WID, 1, 1),
+      new THREE.MeshStandardMaterial({
+        map: mowedTurfTexture(),
+        normalMap: turfNormalMap(),
+        normalScale: new THREE.Vector2(0.55, 0.55),
+        roughness: 0.95,
+        metalness: 0.0,
+      })
     );
     turf.rotation.x = -Math.PI / 2; turf.receiveShadow = true; group.add(turf);
 
     const homeEZ = new THREE.Mesh(new THREE.PlaneGeometry(EZ, FIELD_WID),
-      new THREE.MeshLambertMaterial({ map: endZoneTexture('HIGHLANDERS', '#0a2463', '#ffffff'), polygonOffset: true, polygonOffsetFactor: -1 }));
-    homeEZ.rotation.x = -Math.PI / 2; homeEZ.position.set(-55, 0.01, 0); group.add(homeEZ);
+      new THREE.MeshStandardMaterial({
+        map: endZoneTexture('HIGHLANDERS', '#0a2463', '#ffffff'),
+        roughness: 0.9, metalness: 0.0,
+        polygonOffset: true, polygonOffsetFactor: -1,
+      }));
+    homeEZ.rotation.x = -Math.PI / 2; homeEZ.position.set(-55, 0.01, 0);
+    homeEZ.receiveShadow = true; group.add(homeEZ);
     const awayEZ = new THREE.Mesh(new THREE.PlaneGeometry(EZ, FIELD_WID),
-      new THREE.MeshLambertMaterial({ map: endZoneTexture('SPARTANS', '#b22222', '#ffd700'), polygonOffset: true, polygonOffsetFactor: -1 }));
-    awayEZ.rotation.x = -Math.PI / 2; awayEZ.position.set(55, 0.01, 0); group.add(awayEZ);
+      new THREE.MeshStandardMaterial({
+        map: endZoneTexture('SPARTANS', '#b22222', '#ffd700'),
+        roughness: 0.9, metalness: 0.0,
+        polygonOffset: true, polygonOffsetFactor: -1,
+      }));
+    awayEZ.rotation.x = -Math.PI / 2; awayEZ.position.set(55, 0.01, 0);
+    awayEZ.receiveShadow = true; group.add(awayEZ);
 
     for (let yd = -50; yd <= 50; yd += 5) {
       const line = new THREE.Mesh(new THREE.PlaneGeometry(0.25, FIELD_WID),
@@ -172,9 +311,14 @@ window.FB = window.FB || {};
     for (let yd = -40; yd <= 40; yd += 10) {
       const n = 50 - Math.abs(yd);
       for (const zSide of [-18, 18]) {
+        const tex = yardNumberTexture(n);
         const pl = new THREE.Mesh(new THREE.PlaneGeometry(5, 5),
-          new THREE.MeshBasicMaterial({ map: yardNumberTexture(n), transparent: true, polygonOffset: true, polygonOffsetFactor: -3 }));
-        pl.rotation.x = -Math.PI / 2; pl.position.set(yd, 0.03, zSide); group.add(pl);
+          new THREE.MeshBasicMaterial({ map: tex, transparent: true, polygonOffset: true, polygonOffsetFactor: -3 }));
+        pl.rotation.x = -Math.PI / 2;
+        // Numbers on the +z sideline must flip so they read right-side-up to
+        // that sideline's viewer.
+        if (zSide > 0) pl.rotation.z = Math.PI;
+        pl.position.set(yd, 0.03, zSide); group.add(pl);
       }
     }
     for (let yd = -49; yd <= 49; yd++) {
