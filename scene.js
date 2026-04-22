@@ -485,19 +485,331 @@ window.FB = window.FB || {};
 
   function createStadium() {
     const g = new THREE.Group(); FB.scene.add(g);
-    const colors = [0x223355, 0x2a3d60, 0x334870];
-    for (let ring = 0; ring < 3; ring++) {
-      const t = new THREE.Mesh(new THREE.TorusGeometry(70 + ring * 6, 2.5, 8, 48),
-        new THREE.MeshLambertMaterial({ color: colors[ring] }));
-      t.rotation.x = Math.PI / 2; t.position.set(0, 4 + ring * 2, 0); t.scale.set(1, 1, 0.55); g.add(t);
+    FB.stadiumGroup = g;
+    buildStands(g);
+    buildCrowd(g);
+    buildJumbotron(g);
+    buildLightPoles(g);
+    buildStadiumSignage(g);
+  }
+
+  // ---- Stands (tiered bleachers) ----
+  function buildStands(g) {
+    const riserMat = new THREE.MeshStandardMaterial({ color: 0x262c38, roughness: 0.92, metalness: 0.02 });
+    const treadMat = new THREE.MeshStandardMaterial({ color: 0x15181f, roughness: 0.95, metalness: 0.02 });
+
+    // Sideline stands — long. Z ranges beyond each sideline.
+    for (const zSign of [-1, 1]) {
+      const tiers = 10;
+      for (let t = 0; t < tiers; t++) {
+        const y = 0.7 + t * 1.3;
+        const z = zSign * (28 + t * 1.6);
+        // Riser (vertical face under the row above)
+        const riser = new THREE.Mesh(new THREE.BoxGeometry(154, 1.3, 0.8), riserMat);
+        riser.position.set(0, y, z - zSign * 0.45);
+        riser.castShadow = true; riser.receiveShadow = true;
+        g.add(riser);
+        // Tread (horizontal step that seats sit on)
+        const tread = new THREE.Mesh(new THREE.BoxGeometry(154, 0.25, 1.6), treadMat);
+        tread.position.set(0, y + 0.65, z - zSign * 1.2);
+        tread.receiveShadow = true;
+        g.add(tread);
+      }
     }
-    for (let i = 0; i < 80; i++) {
-      const ang = (i / 80) * Math.PI * 2;
-      const dot = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.2, 1.5),
-        new THREE.MeshLambertMaterial({ color: Math.random() > 0.5 ? 0xffd700 : 0xffffff }));
-      dot.position.set(Math.cos(ang) * 68, 5 + Math.random() * 2, Math.sin(ang) * 38); g.add(dot);
+
+    // End-zone stands — shorter, rotated perpendicular.
+    for (const xSign of [-1, 1]) {
+      const tiers = 8;
+      for (let t = 0; t < tiers; t++) {
+        const y = 0.7 + t * 1.3;
+        const x = xSign * (64 + t * 1.6);
+        const riser = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.3, 88), riserMat);
+        riser.position.set(x - xSign * 0.45, y, 0);
+        riser.castShadow = true; riser.receiveShadow = true;
+        g.add(riser);
+        const tread = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.25, 88), treadMat);
+        tread.position.set(x - xSign * 1.2, y + 0.65, 0);
+        tread.receiveShadow = true;
+        g.add(tread);
+      }
     }
-    // "BECK STADIUM" sign mounted above the end-zone stands.
+
+    // Outer wall so you don't see sky through the stadium from the ground.
+    const wallMat = new THREE.MeshStandardMaterial({ color: 0x1a1f28, roughness: 0.95 });
+    const longWall = new THREE.BoxGeometry(170, 16, 1);
+    const shortWall = new THREE.BoxGeometry(1, 16, 100);
+    for (const zSign of [-1, 1]) {
+      const w = new THREE.Mesh(longWall, wallMat);
+      w.position.set(0, 8, zSign * 46);
+      g.add(w);
+    }
+    for (const xSign of [-1, 1]) {
+      const w = new THREE.Mesh(shortWall, wallMat);
+      w.position.set(xSign * 80, 8, 0);
+      g.add(w);
+    }
+  }
+
+  // ---- Crowd (single InstancedMesh, ~3.5k people) ----
+  function buildCrowd(g) {
+    // A blocky "person" geometry centered on the feet: body + sphere head.
+    // We bake them into ONE geometry by merging vertex arrays manually —
+    // r128 core doesn't ship BufferGeometryUtils, so we build it by hand.
+    const personGeo = makePersonGeometry();
+    const mat = new THREE.MeshStandardMaterial({
+      roughness: 0.95, metalness: 0.0,
+      vertexColors: false,           // color comes from instanceColor
+    });
+
+    // Collect seat positions across every tier.
+    const seats = []; // { x, y, z, home:boolean }
+    const pushRow = (xs, xe, z, y, home) => {
+      const count = Math.floor((xe - xs) / 0.62);
+      for (let i = 0; i < count; i++) {
+        seats.push({
+          x: xs + (i + 0.5) * (xe - xs) / count + (Math.random() - 0.5) * 0.15,
+          y: y + (Math.random() - 0.5) * 0.05,
+          z: z + (Math.random() - 0.5) * 0.2,
+          home,
+        });
+      }
+    };
+    // Sideline seat rows (home side = -z, away side = +z)
+    for (const zSign of [-1, 1]) {
+      const tiers = 10;
+      for (let t = 0; t < tiers; t++) {
+        const y = 0.95 + t * 1.3;
+        const z = zSign * (28.8 + t * 1.6);
+        pushRow(-72, 72, z, y, zSign < 0);
+      }
+    }
+    // End-zone seat rows — alternate coloring for visual variety.
+    for (const xSign of [-1, 1]) {
+      const tiers = 8;
+      for (let t = 0; t < tiers; t++) {
+        const y = 0.95 + t * 1.3;
+        const x = xSign * (64.8 + t * 1.6);
+        const count = Math.floor(82 / 0.62);
+        for (let i = 0; i < count; i++) {
+          seats.push({
+            x: x + (Math.random() - 0.5) * 0.18,
+            y: y + (Math.random() - 0.5) * 0.05,
+            z: -41 + (i + 0.5) * 82 / count + (Math.random() - 0.5) * 0.15,
+            // End zone crowd: mixed, slight home lean if on home side
+            home: xSign < 0,
+          });
+        }
+      }
+    }
+
+    const total = seats.length;
+    const crowd = new THREE.InstancedMesh(personGeo, mat, total);
+    crowd.castShadow = false; crowd.receiveShadow = false;
+    crowd.frustumCulled = false; // bowl is wide; keep it drawing
+
+    const HOME_COLOR = new THREE.Color(0x0a2463);  // Highlanders navy
+    const AWAY_COLOR = new THREE.Color(0xb22222);  // Spartans crimson
+    const NEUTRAL = [
+      0xf0b400, 0xffffff, 0x333333, 0x8a6d3b, 0xcccccc,
+      0x2e7d57, 0x7a3a3a, 0x444c5c, 0xddb15a,
+    ].map(c => new THREE.Color(c));
+
+    const m = new THREE.Matrix4();
+    const rot = new THREE.Euler();
+    const quat = new THREE.Quaternion();
+    const scl = new THREE.Vector3();
+    const tmpColor = new THREE.Color();
+    const basePos = new Float32Array(total * 3);
+    const phases = new Float32Array(total);
+
+    for (let i = 0; i < total; i++) {
+      const p = seats[i];
+      basePos[i * 3 + 0] = p.x;
+      basePos[i * 3 + 1] = p.y;
+      basePos[i * 3 + 2] = p.z;
+      phases[i] = Math.random() * Math.PI * 2;
+
+      // Small random scale and heading so the crowd isn't uniform.
+      rot.set(0, (Math.random() - 0.5) * 0.7, 0);
+      quat.setFromEuler(rot);
+      const s = 0.92 + Math.random() * 0.22;
+      scl.set(s, s, s);
+      m.compose(new THREE.Vector3(p.x, p.y, p.z), quat, scl);
+      crowd.setMatrixAt(i, m);
+
+      // Team-weighted color: home seats favor navy; away favor crimson; end
+      // zones mix evenly. ~15% get a "neutral" fan color.
+      const homeLean = p.home ? 0.68 : 0.28;
+      const r = Math.random();
+      if (r < homeLean) tmpColor.copy(HOME_COLOR);
+      else if (r < homeLean + 0.22) tmpColor.copy(AWAY_COLOR);
+      else tmpColor.copy(NEUTRAL[Math.floor(Math.random() * NEUTRAL.length)]);
+      // Slight per-instance brightness jitter so the crowd doesn't flat-tone.
+      const j = 0.82 + Math.random() * 0.36;
+      tmpColor.multiplyScalar(j);
+      crowd.setColorAt(i, tmpColor);
+    }
+    crowd.instanceMatrix.needsUpdate = true;
+    if (crowd.instanceColor) crowd.instanceColor.needsUpdate = true;
+
+    g.add(crowd);
+    FB.crowd = {
+      mesh: crowd,
+      basePos,
+      phases,
+      count: total,
+      _m: new THREE.Matrix4(),
+      _q: new THREE.Quaternion(),
+      _s: new THREE.Vector3(1, 1, 1),
+      _v: new THREE.Vector3(),
+    };
+  }
+
+  function makePersonGeometry() {
+    // Body box + head sphere, translated into position. Merge by concat.
+    const body = new THREE.BoxGeometry(0.5, 1.0, 0.38);
+    body.translate(0, 0.5, 0);
+    const head = new THREE.SphereGeometry(0.22, 8, 6);
+    head.translate(0, 1.22, 0);
+
+    // Manual merge of two buffer geometries (r128 core lacks utils).
+    const bPos = body.attributes.position.array;
+    const bNorm = body.attributes.normal.array;
+    const hPos = head.attributes.position.array;
+    const hNorm = head.attributes.normal.array;
+    const positions = new Float32Array(bPos.length + hPos.length);
+    positions.set(bPos, 0); positions.set(hPos, bPos.length);
+    const normals = new Float32Array(bNorm.length + hNorm.length);
+    normals.set(bNorm, 0); normals.set(hNorm, bNorm.length);
+
+    let indices;
+    if (body.index && head.index) {
+      const bIdx = body.index.array, hIdx = head.index.array;
+      const offset = bPos.length / 3;
+      indices = new (hIdx.constructor)(bIdx.length + hIdx.length);
+      indices.set(bIdx, 0);
+      for (let i = 0; i < hIdx.length; i++) indices[bIdx.length + i] = hIdx[i] + offset;
+    }
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geo.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
+    if (indices) geo.setIndex(new THREE.BufferAttribute(indices, 1));
+    body.dispose(); head.dispose();
+    return geo;
+  }
+
+  // Per-frame breathing animation: wavy Y-bob on every seated fan. Called
+  // from the main tick in logic-loop.js.
+  FB.updateCrowd = function (time) {
+    const C = FB.crowd;
+    if (!C) return;
+    const m = C._m, q = C._q, s = C._s, v = C._v;
+    const base = C.basePos, phases = C.phases, amp = 0.09;
+    q.identity();
+    for (let i = 0; i < C.count; i++) {
+      const bx = base[i * 3 + 0];
+      const by = base[i * 3 + 1];
+      const bz = base[i * 3 + 2];
+      const off = Math.sin(time * 1.35 + phases[i]) * amp;
+      v.set(bx, by + off, bz);
+      m.compose(v, q, s);
+      C.mesh.setMatrixAt(i, m);
+    }
+    C.mesh.instanceMatrix.needsUpdate = true;
+  };
+
+  // ---- Jumbotron at the far end zone ----
+  function buildJumbotron(g) {
+    const jumboCanvas = document.createElement('canvas');
+    jumboCanvas.width = 1024; jumboCanvas.height = 512;
+    const jctx = jumboCanvas.getContext('2d');
+    jctx.fillStyle = '#0a1829'; jctx.fillRect(0, 0, 1024, 512);
+    // Border
+    jctx.strokeStyle = '#ffcc00'; jctx.lineWidth = 10;
+    jctx.strokeRect(10, 10, 1004, 492);
+    // Team line
+    jctx.fillStyle = '#4cc9f0';
+    jctx.font = 'bold 110px system-ui, sans-serif';
+    jctx.textAlign = 'center';
+    jctx.fillText('HIGHLANDERS', 512, 170);
+    jctx.fillStyle = '#ffffff';
+    jctx.font = 'bold 70px system-ui, sans-serif';
+    jctx.fillText('vs', 512, 270);
+    jctx.fillStyle = '#ff4d4d';
+    jctx.font = 'bold 110px system-ui, sans-serif';
+    jctx.fillText('SPARTANS', 512, 400);
+    const jumboTex = new THREE.CanvasTexture(jumboCanvas);
+    jumboTex.encoding = THREE.sRGBEncoding;
+    jumboTex.anisotropy = 8;
+
+    const screenMat = new THREE.MeshStandardMaterial({
+      map: jumboTex,
+      emissive: 0xffffff,
+      emissiveMap: jumboTex,
+      emissiveIntensity: 1.1,
+      roughness: 0.35, metalness: 0.1,
+    });
+    const frameMat = new THREE.MeshStandardMaterial({ color: 0x1a1f28, roughness: 0.55, metalness: 0.35 });
+
+    // Mount it above the far (away) end zone so it's visible from the default
+    // camera side.
+    const JX = 82, JY = 28, JZ = 0;
+    const screen = new THREE.Mesh(new THREE.BoxGeometry(0.4, 18, 48), screenMat);
+    screen.position.set(JX, JY, JZ);
+    // Screen normal faces -X toward the field center.
+    g.add(screen);
+    const frame = new THREE.Mesh(new THREE.BoxGeometry(0.8, 22, 54), frameMat);
+    frame.position.set(JX + 0.25, JY, JZ);
+    g.add(frame);
+    // Two support columns down to the stand
+    for (const zOff of [-18, 18]) {
+      const col = new THREE.Mesh(new THREE.BoxGeometry(1, JY, 1), frameMat);
+      col.position.set(JX + 0.5, JY / 2, zOff);
+      col.castShadow = true;
+      g.add(col);
+    }
+  }
+
+  // ---- 4 stadium light poles at the corners with emissive bulbs ----
+  function buildLightPoles(g) {
+    const poleMat = new THREE.MeshStandardMaterial({ color: 0x1e1e1e, roughness: 0.6, metalness: 0.5 });
+    const bulbMat = new THREE.MeshStandardMaterial({
+      color: 0xffffcc,
+      emissive: 0xfff2cc,
+      emissiveIntensity: 2.2,
+      roughness: 0.2,
+    });
+    const corners = [
+      { x: -78, z: -44 }, { x:  78, z: -44 },
+      { x: -78, z:  44 }, { x:  78, z:  44 },
+    ];
+    for (const c of corners) {
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.65, 32, 8), poleMat);
+      pole.position.set(c.x, 16, c.z);
+      pole.castShadow = true;
+      g.add(pole);
+      // Cross arm for the bulb cluster
+      const arm = new THREE.Mesh(new THREE.BoxGeometry(3.5, 0.5, 0.5), poleMat);
+      arm.position.set(c.x + Math.sign(-c.x) * 1.5, 32.2, c.z + Math.sign(-c.z) * 1.5);
+      g.add(arm);
+      // 3x3 lamp grid
+      const cluster = new THREE.Group();
+      cluster.position.set(c.x + Math.sign(-c.x) * 2.5, 32.2, c.z + Math.sign(-c.z) * 2.5);
+      for (let i = 0; i < 9; i++) {
+        const bx = ((i % 3) - 1) * 0.85;
+        const by = (Math.floor(i / 3) - 1) * 0.75;
+        const bulb = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.55, 0.22), bulbMat);
+        bulb.position.set(bx, by, 0);
+        cluster.add(bulb);
+      }
+      cluster.lookAt(0, 8, 0);
+      g.add(cluster);
+    }
+  }
+
+  // ---- Rear-wall "BECK STADIUM" signage (kept from the old scene) ----
+  function buildStadiumSignage(g) {
     const signCanvas = document.createElement('canvas');
     signCanvas.width = 1024; signCanvas.height = 192;
     const sctx = signCanvas.getContext('2d');
@@ -509,11 +821,12 @@ window.FB = window.FB || {};
     sctx.textAlign = 'center'; sctx.textBaseline = 'middle';
     sctx.fillText('BECK STADIUM', 512, 96);
     const signTex = new THREE.CanvasTexture(signCanvas);
-    const signMat = new THREE.MeshBasicMaterial({ map: signTex, transparent: false });
-    const signGeo = new THREE.PlaneGeometry(48, 9);
-    const sign1 = new THREE.Mesh(signGeo, signMat);
-    sign1.position.set(0, 16, -44); g.add(sign1);
-    const sign2 = new THREE.Mesh(signGeo, signMat);
-    sign2.position.set(0, 16, 44); sign2.rotation.y = Math.PI; g.add(sign2);
+    signTex.encoding = THREE.sRGBEncoding;
+    const signMat = new THREE.MeshBasicMaterial({ map: signTex });
+    const signGeo = new THREE.PlaneGeometry(54, 10);
+    const s1 = new THREE.Mesh(signGeo, signMat);
+    s1.position.set(0, 14.5, -45.5); g.add(s1);
+    const s2 = new THREE.Mesh(signGeo, signMat);
+    s2.position.set(0, 14.5, 45.5); s2.rotation.y = Math.PI; g.add(s2);
   }
 })(window.FB);

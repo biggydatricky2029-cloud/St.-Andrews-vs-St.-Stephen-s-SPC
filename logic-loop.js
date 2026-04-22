@@ -13,6 +13,7 @@
     const dt = Math.min(0.05, (t - last) / 1000);
     last = t;
     step(dt);
+    FB.updateCrowd && FB.updateCrowd(t * 0.001);
     if (FB.renderer && FB.scene && FB.camera) FB.renderer.render(FB.scene, FB.camera);
     requestAnimationFrame(tick);
   }
