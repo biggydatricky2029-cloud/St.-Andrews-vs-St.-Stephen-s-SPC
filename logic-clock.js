@@ -41,6 +41,15 @@
 
   FB.advanceDown = function (gain) {
     const s = FB.state;
+    // A 2-point conversion is one attempt only — on any non-scoring outcome
+    // go straight to the kickoff, no more downs.
+    if (s.twoPointAttempt) {
+      s.twoPointAttempt = false;
+      FB.state.log.push('2-POINT NO GOOD');
+      FB.updateHUD && FB.updateHUD();
+      FB.kickoffAfterScore && FB.kickoffAfterScore();
+      return;
+    }
     s.distance -= gain;
     if (s.distance <= 0) {
       s.down = 1; s.distance = 10;
@@ -85,6 +94,16 @@
 
   FB.scoreTouchdown = function () {
     const s = FB.state;
+    // If this crossing into the end zone was the 2-point conversion attempt,
+    // credit 2 points and go directly to kickoff — no XP prompt.
+    if (s.twoPointAttempt) {
+      s.twoPointAttempt = false;
+      s.score[s.possession] += 2;
+      FB.state.log.push('2-POINT GOOD — ' + FB.teams[s.possession].shortName);
+      FB.updateHUD && FB.updateHUD();
+      FB.kickoffAfterScore && FB.kickoffAfterScore();
+      return;
+    }
     s.score[s.possession] += 6;
     FB.state.log.push('TOUCHDOWN ' + FB.teams[s.possession].shortName + '!');
     FB.updateHUD && FB.updateHUD();
@@ -93,7 +112,12 @@
     const kickBtn = document.getElementById('xpKick');
     const twoBtn = document.getElementById('xpTwo');
     const onKick = () => { modal.classList.add('hidden'); cleanup(); FB.setupPlay('xp'); };
-    const onTwo = () => { modal.classList.add('hidden'); cleanup(); s.ballOn = 98; s.down = 1; s.distance = 2; s.los = 98; FB.setupPlay(Math.random() < 0.5 ? 'pass' : 'run'); };
+    const onTwo = () => {
+      modal.classList.add('hidden'); cleanup();
+      s.twoPointAttempt = true;
+      s.ballOn = 98; s.down = 1; s.distance = 2; s.los = 98;
+      FB.setupPlay(Math.random() < 0.5 ? 'pass' : 'run');
+    };
     function cleanup() { kickBtn.removeEventListener('click', onKick); twoBtn.removeEventListener('click', onTwo); }
     kickBtn.addEventListener('click', onKick);
     twoBtn.addEventListener('click', onTwo);

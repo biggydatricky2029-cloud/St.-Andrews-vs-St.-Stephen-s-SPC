@@ -185,6 +185,7 @@
     FB.ballState.airTime = 0;
     FB.ballState.kind = 'pass';
     FB.ballState.targetPlayer = receiver;
+    FB.ballState.aimXZ = { x: tgt.x, z: tgt.z };
     FB.ballCarrier = null;
     // Vertical solve: y(t) = from.y + vy*t - 0.5*g*t^2; want y(flight)=tgt.y
     const g = 9.8;

@@ -72,6 +72,16 @@
     bc.mesh.position.addScaledVector(bc.vel, dt);
     clampField(bc.mesh.position);
 
+    // Crossing the opponent's goal line ends the play immediately (TD).
+    // Otherwise a 2-pt conversion run would continue until a tackle.
+    if (FB.state.phase === 'play' && FB.specialMode !== 'kickoff') {
+      const yardNow = FB.yardFromBallX(bc.mesh.position.x, bc.team);
+      if (yardNow >= 100) {
+        if (FB.endPlay) FB.endPlay({ reason: 'td' });
+        return;
+      }
+    }
+
     // Sidelines = out of bounds, ends play if carrier steps past.
     const { FIELD_WID } = FB.const;
     if (Math.abs(bc.mesh.position.z) >= FIELD_WID / 2 - 0.6) {
@@ -98,7 +108,17 @@
         if (wp && ent.mesh.position.distanceTo(wp) < 1.2 && ent.routeIdx < ent.route.length - 1) {
           ent.routeIdx += 1;
         }
-        if (wp) steerToward(ent, wp, dt, 0.88);
+        // If the ball is in the air and I'm the intended receiver, chase the
+        // aim point so a lob doesn't sail over my head after the route ends.
+        const isTarget = FB.ballState && FB.ballState.inAir
+          && FB.ballState.kind === 'pass' && FB.ballState.targetPlayer === ent
+          && FB.ballState.aimXZ;
+        if (isTarget) {
+          const aim = new THREE.Vector3(FB.ballState.aimXZ.x, 0, FB.ballState.aimXZ.z);
+          steerToward(ent, aim, dt, 0.95);
+        } else if (wp) {
+          steerToward(ent, wp, dt, 0.88);
+        }
       } else if (OL_SLOTS.includes(ent.role)) {
         // Offensive line: actively seek out the nearest unblocked rusher and
         // wall them off, positioning between the rusher and the QB.
