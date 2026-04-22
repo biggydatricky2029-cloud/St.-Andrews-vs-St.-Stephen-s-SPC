@@ -127,6 +127,9 @@
       // AI QB: throw after 1.6–2.4s to the most open receiver.
       const delay = 1600 + Math.random() * 800;
       setTimeout(() => aiThrow(), delay);
+    } else if (s.playType === 'pass') {
+      // User is on offense for a pass play — show numbered receiver chips.
+      FB.showReceiverChips && FB.showReceiverChips();
     }
     FB.updateButtonStates && FB.updateButtonStates();
   };
@@ -152,45 +155,143 @@
     if (rb) FB.attachBallTo(rb);
   };
 
-  // QB throws to chosen receiver (lead pass).
-  FB.throwPass = function (receiver) {
+  // QB throws to chosen receiver.
+  // passType: 'lob' (default) = slower, higher arc; 'bullet' = fast, flatter.
+  FB.throwPass = function (receiver, passType) {
     if (!receiver || !FB.qb || FB.ballCarrier !== FB.qb) return;
-    const dir = FB.forwardDir(FB.state.possession);
+    const type = passType === 'bullet' ? 'bullet' : 'lob';
     const from = FB.ball.position.clone();
-    const lead = receiver.vel.clone().multiplyScalar(0.6);
-    const tgt = receiver.mesh.position.clone().add(lead).add(new THREE.Vector3(0, 2, 0));
+    const leadScale = type === 'bullet' ? 0.35 : 0.6;
+    const lead = receiver.vel.clone().multiplyScalar(leadScale);
+    const heightOffset = type === 'bullet' ? 1.6 : 2.4;
+    const tgt = receiver.mesh.position.clone().add(lead).add(new THREE.Vector3(0, heightOffset, 0));
     const dist = from.distanceTo(tgt);
-    const flight = Math.max(0.6, dist / 22);
+    const flight = type === 'bullet' ? Math.max(0.3, dist / 36) : Math.max(0.6, dist / 20);
     FB.ballState.carried = false;
     FB.ballState.inAir = true;
     FB.ballState.airTime = 0;
     FB.ballState.kind = 'pass';
     FB.ballState.targetPlayer = receiver;
     FB.ballCarrier = null;
-    FB.ballState.vel.set((tgt.x - from.x) / flight, (tgt.y - from.y) / flight + 0.5 * 9.8 * flight, (tgt.z - from.z) / flight);
-    FB.state.log.push('Pass thrown to #' + receiver.player.number);
+    FB.ballState.vel.set(
+      (tgt.x - from.x) / flight,
+      (tgt.y - from.y) / flight + 0.5 * 9.8 * flight,
+      (tgt.z - from.z) / flight
+    );
+    FB.state.log.push((type === 'bullet' ? 'Bullet' : 'Lob') + ' pass to #' + receiver.player.number);
+    FB.clearReceiverChips && FB.clearReceiverChips();
   };
 
-  // Receiver-picker UI
-  FB.showReceiverPicker = function () {
-    const picker = document.getElementById('receiverPicker');
-    picker.innerHTML = '';
-    const rcvs = FB.visibleReceivers(FB.state.possession).slice(0, 3);
-    if (rcvs.length === 0) { picker.classList.add('hidden'); return; }
-    for (const r of rcvs) {
-      const btn = document.createElement('button');
-      btn.className = 'rcv-btn';
-      btn.textContent = '#' + r.player.number + ' ' + r.role;
-      btn.addEventListener('click', () => { FB.throwPass(r); picker.classList.add('hidden'); });
-      picker.appendChild(btn);
+  // ---- Receiver chips (world-anchored circles above eligible receivers) ----
+  // Tap = lob; hold (>=250ms) = bullet.
+  let chipContainer = null;
+  let chips = []; // { el, receiver }
+  const HOLD_MS = 250;
+
+  function ensureChipContainer() {
+    if (chipContainer && chipContainer.isConnected) return chipContainer;
+    chipContainer = document.getElementById('rcvChips');
+    if (!chipContainer) {
+      chipContainer = document.createElement('div');
+      chipContainer.id = 'rcvChips';
+      chipContainer.className = 'rcv-chips';
+      const host = document.getElementById('gameHost') || document.body;
+      host.appendChild(chipContainer);
     }
-    picker.classList.remove('hidden');
-    setTimeout(() => picker.classList.add('hidden'), 3500);
+    return chipContainer;
+  }
+
+  FB.showReceiverChips = function () {
+    FB.clearReceiverChips();
+    const container = ensureChipContainer();
+    const rcvs = FB.visibleReceivers(FB.state.possession);
+    for (const r of rcvs) {
+      const el = document.createElement('div');
+      el.className = 'rcv-chip';
+      el.textContent = '#' + r.player.number;
+
+      let holdTimer = null;
+      let holding = false;
+      let engaged = false;
+
+      const onDown = (ev) => {
+        if (ev && ev.preventDefault) ev.preventDefault();
+        if (FB.state.phase !== 'play' || FB.ballCarrier !== FB.qb) return;
+        engaged = true;
+        holding = false;
+        el.classList.add('pressed');
+        if (holdTimer) clearTimeout(holdTimer);
+        holdTimer = setTimeout(() => {
+          if (engaged) { holding = true; el.classList.add('hold'); }
+        }, HOLD_MS);
+      };
+      const onUp = (ev) => {
+        if (ev && ev.preventDefault) ev.preventDefault();
+        if (!engaged) return;
+        engaged = false;
+        if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
+        el.classList.remove('pressed');
+        el.classList.remove('hold');
+        if (FB.state.phase !== 'play' || FB.ballCarrier !== FB.qb) return;
+        FB.throwPass(r, holding ? 'bullet' : 'lob');
+        holding = false;
+      };
+      const onCancel = () => {
+        engaged = false;
+        holding = false;
+        if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
+        el.classList.remove('pressed');
+        el.classList.remove('hold');
+      };
+
+      el.addEventListener('touchstart', onDown, { passive: false });
+      el.addEventListener('touchend', onUp, { passive: false });
+      el.addEventListener('touchcancel', onCancel, { passive: false });
+      el.addEventListener('mousedown', onDown);
+      el.addEventListener('mouseup', onUp);
+      el.addEventListener('mouseleave', onCancel);
+
+      container.appendChild(el);
+      chips.push({ el, receiver: r });
+    }
+  };
+
+  FB.clearReceiverChips = function () {
+    chips = [];
+    if (chipContainer) chipContainer.innerHTML = '';
+  };
+
+  FB.updateReceiverChips = function () {
+    if (!chips.length || !FB.camera) return;
+    const s = FB.state;
+    const active = s.phase === 'play' && FB.ballCarrier === FB.qb && s.possession === FB.userTeam;
+    if (!active) { FB.clearReceiverChips(); return; }
+    const w = window.innerWidth, h = window.innerHeight;
+    const v = new THREE.Vector3();
+    for (const c of chips) {
+      const r = c.receiver;
+      if (!r || !r.mesh || !r.mesh.visible || r.isDown) { c.el.style.display = 'none'; continue; }
+      v.set(r.mesh.position.x, (r.mesh.position.y || 0) + 3.4, r.mesh.position.z);
+      v.project(FB.camera);
+      if (v.z < -1 || v.z > 1) { c.el.style.display = 'none'; continue; }
+      const sx = (v.x * 0.5 + 0.5) * w;
+      const sy = (1 - (v.y * 0.5 + 0.5)) * h;
+      c.el.style.display = '';
+      c.el.style.left = sx + 'px';
+      c.el.style.top = sy + 'px';
+    }
+  };
+
+  // Legacy: PASS button falls through to the chip system.
+  FB.showReceiverPicker = function () {
+    if (FB.state.phase !== 'play' || FB.ballCarrier !== FB.qb) return;
+    if (!chips.length) FB.showReceiverChips();
   };
 
   FB.onPassCaught = function (rcv) {
     FB.attachBallTo(rcv);
     FB.state.log.push('Caught by #' + rcv.player.number);
+    FB.clearReceiverChips && FB.clearReceiverChips();
   };
 
   // Four-move juke system — AI picks the best move given the defender's
@@ -327,6 +428,7 @@
     const s = FB.state;
     if (s.phase === 'deadball' || s.phase === 'gameover') return;
     s.phase = 'deadball';
+    FB.clearReceiverChips && FB.clearReceiverChips();
     let gain = 0;
     let newBallOn = s.ballOn;
     let endZ = 0;

@@ -64,6 +64,7 @@
     FB.tickClock && FB.tickClock(dt);
     FB.updateHUD && FB.updateHUD();
     FB.updateButtonStates && FB.updateButtonStates();
+    FB.updateReceiverChips && FB.updateReceiverChips();
   }
 
 })(window.FB);
