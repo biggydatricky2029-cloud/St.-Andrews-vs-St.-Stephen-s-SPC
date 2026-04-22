@@ -14,7 +14,11 @@
     last = t;
     step(dt);
     FB.updateCrowd && FB.updateCrowd(t * 0.001);
-    if (FB.renderer && FB.scene && FB.camera) FB.renderer.render(FB.scene, FB.camera);
+    if (FB.composer) {
+      FB.composer.render();
+    } else if (FB.renderer && FB.scene && FB.camera) {
+      FB.renderer.render(FB.scene, FB.camera);
+    }
     requestAnimationFrame(tick);
   }
 

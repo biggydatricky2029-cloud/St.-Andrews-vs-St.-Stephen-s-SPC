@@ -92,6 +92,9 @@ window.FB = window.FB || {};
     createField();
     createStadium();
 
+    // ---- Post-processing (Pass 5): bloom + vignette ----
+    buildComposer();
+
     window.addEventListener('resize', FB.onResize);
     window.addEventListener('orientationchange', FB.onResize);
   };
@@ -100,7 +103,75 @@ window.FB = window.FB || {};
     FB.renderer.setSize(window.innerWidth, window.innerHeight);
     FB.camera.aspect = window.innerWidth / window.innerHeight;
     FB.camera.updateProjectionMatrix();
+    if (FB.composer) FB.composer.setSize(window.innerWidth, window.innerHeight);
   };
+
+  // Build EffectComposer if the post-processing modules loaded. Any missing
+  // class falls through to the plain renderer.render path in logic-loop.js.
+  function buildComposer() {
+    try {
+      if (!THREE.EffectComposer || !THREE.RenderPass || !THREE.ShaderPass ||
+          !THREE.UnrealBloomPass) {
+        return;
+      }
+      const composer = new THREE.EffectComposer(FB.renderer);
+      composer.setSize(window.innerWidth, window.innerHeight);
+      composer.addPass(new THREE.RenderPass(FB.scene, FB.camera));
+
+      // Subtle bloom so stadium lights, jumbotron, and white lines pop.
+      const bloom = new THREE.UnrealBloomPass(
+        new THREE.Vector2(window.innerWidth, window.innerHeight),
+        0.30,   // strength
+        0.40,   // radius
+        0.90    // threshold (only very bright pixels bloom)
+      );
+      composer.addPass(bloom);
+
+      // Mild broadcast-style vignette.
+      const vignetteShader = {
+        uniforms: {
+          tDiffuse: { value: null },
+          vignetteStrength: { value: 0.28 },
+          vignetteInner:    { value: 0.45 },
+          vignetteOuter:    { value: 0.95 },
+        },
+        vertexShader: [
+          'varying vec2 vUv;',
+          'void main() {',
+          '  vUv = uv;',
+          '  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);',
+          '}',
+        ].join('\n'),
+        fragmentShader: [
+          'uniform sampler2D tDiffuse;',
+          'uniform float vignetteStrength;',
+          'uniform float vignetteInner;',
+          'uniform float vignetteOuter;',
+          'varying vec2 vUv;',
+          'void main() {',
+          '  vec4 c = texture2D(tDiffuse, vUv);',
+          '  float d = distance(vUv, vec2(0.5));',
+          '  float v = smoothstep(vignetteInner, vignetteOuter, d);',
+          '  c.rgb *= mix(1.0, 1.0 - vignetteStrength, v);',
+          '  gl_FragColor = c;',
+          '}',
+        ].join('\n'),
+      };
+      composer.addPass(new THREE.ShaderPass(vignetteShader));
+
+      // Final sRGB gamma correction — EffectComposer works in linear space;
+      // without this pass the final image reads washed under ACES.
+      if (THREE.GammaCorrectionShader) {
+        const gamma = new THREE.ShaderPass(THREE.GammaCorrectionShader);
+        composer.addPass(gamma);
+      }
+
+      FB.composer = composer;
+    } catch (e) {
+      // Never let post-processing errors take the game down.
+      FB.composer = null;
+    }
+  }
 
   function createSky() {
     const geom = new THREE.SphereGeometry(300, 32, 16);
@@ -303,9 +374,14 @@ window.FB = window.FB || {};
     awayEZ.rotation.x = -Math.PI / 2; awayEZ.position.set(55, 0.01, 0);
     awayEZ.receiveShadow = true; group.add(awayEZ);
 
+    // Yard lines — kept as unlit MeshBasic but explicitly not tonemapped so
+    // they stay pure white under ACES filmic tonemap.
+    const lineMat = new THREE.MeshBasicMaterial({
+      color: 0xffffff, toneMapped: false,
+      polygonOffset: true, polygonOffsetFactor: -2,
+    });
     for (let yd = -50; yd <= 50; yd += 5) {
-      const line = new THREE.Mesh(new THREE.PlaneGeometry(0.25, FIELD_WID),
-        new THREE.MeshBasicMaterial({ color: 0xffffff, polygonOffset: true, polygonOffsetFactor: -2 }));
+      const line = new THREE.Mesh(new THREE.PlaneGeometry(0.25, FIELD_WID), lineMat);
       line.rotation.x = -Math.PI / 2; line.position.set(yd, 0.02, 0); group.add(line);
     }
     for (let yd = -40; yd <= 40; yd += 10) {
@@ -321,18 +397,21 @@ window.FB = window.FB || {};
         pl.position.set(yd, 0.03, zSide); group.add(pl);
       }
     }
+    const hashMat = new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false });
     for (let yd = -49; yd <= 49; yd++) {
       for (const z of [-6, 6]) {
-        const h = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.2), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+        const h = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.2), hashMat);
         h.rotation.x = -Math.PI / 2; h.position.set(yd, 0.025, z); group.add(h);
       }
     }
+    const sidelineMat = new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false });
     for (const z of [-FIELD_WID / 2, FIELD_WID / 2]) {
-      const s = new THREE.Mesh(new THREE.PlaneGeometry(FIELD_LEN, 0.3), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+      const s = new THREE.Mesh(new THREE.PlaneGeometry(FIELD_LEN, 0.3), sidelineMat);
       s.rotation.x = -Math.PI / 2; s.position.set(0, 0.02, z); group.add(s);
     }
     for (const side of [-55, 55]) {
-      const postMat = new THREE.MeshLambertMaterial({ color: 0xffd54a });
+      // Goalposts — metallic gold so they catch the sun.
+      const postMat = new THREE.MeshStandardMaterial({ color: 0xffc72c, roughness: 0.32, metalness: 0.75 });
       const base = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 4, 8), postMat);
       base.position.set(side > 0 ? side + 5 : side - 5, 2, 0); group.add(base);
       const cross = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 6.17, 8), postMat);
@@ -343,12 +422,16 @@ window.FB = window.FB || {};
       }
     }
 
+    // Broadcast overlay lines: pure color, not tonemapped, so they read
+    // through the ACES pipeline the way they do on TV.
     FB.firstDownLine = new THREE.Mesh(new THREE.PlaneGeometry(0.4, FIELD_WID),
-      new THREE.MeshBasicMaterial({ color: 0xffea00, transparent: true, opacity: 0.65, polygonOffset: true, polygonOffsetFactor: -4 }));
+      new THREE.MeshBasicMaterial({ color: 0xffea00, transparent: true, opacity: 0.75, toneMapped: false,
+        polygonOffset: true, polygonOffsetFactor: -4 }));
     FB.firstDownLine.rotation.x = -Math.PI / 2; FB.firstDownLine.position.y = 0.04; group.add(FB.firstDownLine);
 
     FB.losLine = new THREE.Mesh(new THREE.PlaneGeometry(0.35, FIELD_WID),
-      new THREE.MeshBasicMaterial({ color: 0x4cc9f0, transparent: true, opacity: 0.55, polygonOffset: true, polygonOffsetFactor: -4 }));
+      new THREE.MeshBasicMaterial({ color: 0x4cc9f0, transparent: true, opacity: 0.7, toneMapped: false,
+        polygonOffset: true, polygonOffsetFactor: -4 }));
     FB.losLine.rotation.x = -Math.PI / 2; FB.losLine.position.y = 0.04; group.add(FB.losLine);
 
     createReferee();
@@ -365,26 +448,28 @@ window.FB = window.FB || {};
   }
   function createReferee() {
     const ref = new THREE.Group();
+    const stripeTex = zebraStripeTex();
+    stripeTex.encoding = THREE.sRGBEncoding;
     const torso = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.45, 0.5, 1.2, 10),
-      new THREE.MeshLambertMaterial({ map: zebraStripeTex() })
+      new THREE.CylinderGeometry(0.45, 0.5, 1.2, 12),
+      new THREE.MeshStandardMaterial({ map: stripeTex, roughness: 0.85 })
     );
-    torso.position.y = 1.6; ref.add(torso);
+    torso.position.y = 1.6; torso.castShadow = true; ref.add(torso);
     const head = new THREE.Mesh(
-      new THREE.SphereGeometry(0.3, 10, 8),
-      new THREE.MeshLambertMaterial({ color: 0xf4c89b })
+      new THREE.SphereGeometry(0.3, 12, 10),
+      new THREE.MeshStandardMaterial({ color: 0xf4c89b, roughness: 0.7 })
     );
     head.position.y = 2.45; ref.add(head);
     const cap = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.32, 0.32, 0.18, 10),
-      new THREE.MeshLambertMaterial({ color: 0x111111 })
+      new THREE.CylinderGeometry(0.32, 0.32, 0.18, 12),
+      new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.6 })
     );
     cap.position.y = 2.72; ref.add(cap);
     const pants = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.4, 0.35, 1.2, 10),
-      new THREE.MeshLambertMaterial({ color: 0x1a1a1a })
+      new THREE.CylinderGeometry(0.4, 0.35, 1.2, 12),
+      new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.8 })
     );
-    pants.position.y = 0.6; ref.add(pants);
+    pants.position.y = 0.6; pants.castShadow = true; ref.add(pants);
     ref.visible = false;
     FB.scene.add(ref);
     FB.referee = ref;

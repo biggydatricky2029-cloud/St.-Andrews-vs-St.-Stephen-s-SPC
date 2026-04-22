@@ -47,6 +47,22 @@
     return new THREE.CanvasTexture(out);
   }
 
+  function helmetLogoTexture(letter, fg) {
+    const c = document.createElement('canvas'); c.width = 128; c.height = 128;
+    const ctx = c.getContext('2d');
+    ctx.clearRect(0, 0, 128, 128);
+    ctx.fillStyle = fg || '#ffffff';
+    ctx.font = 'bold 110px system-ui, -apple-system, Helvetica, sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.shadowColor = 'rgba(0,0,0,0.35)';
+    ctx.shadowBlur = 4;
+    ctx.fillText(String(letter), 64, 64);
+    const t = new THREE.CanvasTexture(c);
+    t.encoding = THREE.sRGBEncoding;
+    t.anisotropy = 8;
+    return t;
+  }
+
   function parseHeightInches(h) {
     if (!h) return 0;
     const m = /^(\d+)'(\d+)"?$/.exec(String(h).trim());
@@ -60,11 +76,13 @@
     const secondary = new THREE.Color(team.secondaryColor);
     const primaryHex = '#' + primary.getHexString();
     const secondaryHex = '#' + secondary.getHexString();
-    const skinMat = new THREE.MeshLambertMaterial({ color: 0xc48a66 });
-    const gloveMat = new THREE.MeshLambertMaterial({ color: 0x141414 });
-    const cleatMat = new THREE.MeshLambertMaterial({ color: 0x141414 });
-    const sockMat = new THREE.MeshLambertMaterial({ color: 0xf5f5f5 });
-    const beltMat = new THREE.MeshLambertMaterial({ color: 0x141414 });
+    // PBR uniforms — broadcast-style with sRGB output + ACES tonemap.
+    const skinMat = new THREE.MeshStandardMaterial({ color: 0xc48a66, roughness: 0.72, metalness: 0.0 });
+    const gloveMat = new THREE.MeshStandardMaterial({ color: 0x141414, roughness: 0.5, metalness: 0.15 });
+    const cleatMat = new THREE.MeshStandardMaterial({ color: 0x0a0a0a, roughness: 0.45, metalness: 0.2 });
+    const sockMat = new THREE.MeshStandardMaterial({ color: 0xf5f5f5, roughness: 0.85, metalness: 0.0 });
+    const beltMat = new THREE.MeshStandardMaterial({ color: 0x141414, roughness: 0.55, metalness: 0.15 });
+    const pantStripeMat = new THREE.MeshStandardMaterial({ color: secondary.clone().lerp(new THREE.Color(0xffffff), 0.7), roughness: 0.7, metalness: 0.0 });
 
     // --- Proportional scaling from real listed height/weight ---
     const heightIn = parseHeightInches(player.height) || 70;
@@ -73,7 +91,7 @@
     const girth = Math.max(0.85, Math.min(1.55, Math.pow(weightLb / 170, 0.38)));
 
     const g = new THREE.Group();
-    const pantsMat = new THREE.MeshLambertMaterial({ color: secondary });
+    const pantsMat = new THREE.MeshStandardMaterial({ color: secondary, roughness: 0.78, metalness: 0.0 });
 
     // --- Legs with hip + knee pivots so they can swing and bend. ---
     // Each leg is a chain: hipPivot (at hip joint) -> thigh + kneePivot.
@@ -101,6 +119,15 @@
       thigh.position.set(0, -thighH / 2, 0);
       thigh.castShadow = true;
       hipPivot.add(thigh);
+
+      // Pants side-stripe (NFL/high-school style) running down the outside.
+      const stripeX = (side === 'L' ? -1 : 1) * thighRTop * 0.92;
+      const stripe = new THREE.Mesh(
+        new THREE.BoxGeometry(0.045, thighH * 0.95, 0.12),
+        pantStripeMat
+      );
+      stripe.position.set(stripeX, -thighH / 2, 0);
+      hipPivot.add(stripe);
 
       const kneePivot = new THREE.Group();
       kneePivot.position.set(0, -thighH, 0);
@@ -170,13 +197,17 @@
       tp.setZ(i, tp.getZ(i) * d);
     }
     torsoGeo.computeVertexNormals();
+    // Jersey textures need sRGB so the printed numbers aren't washed under ACES.
+    frontTex.encoding = THREE.sRGBEncoding;
+    backTex.encoding = THREE.sRGBEncoding;
+    const jerseyCfg = { roughness: 0.72, metalness: 0.0 };
     const torsoMats = [
-      new THREE.MeshLambertMaterial({ color: primary }),
-      new THREE.MeshLambertMaterial({ color: primary }),
-      new THREE.MeshLambertMaterial({ color: primary }),
-      new THREE.MeshLambertMaterial({ color: primary }),
-      new THREE.MeshLambertMaterial({ map: frontTex }),
-      new THREE.MeshLambertMaterial({ map: backTex }),
+      new THREE.MeshStandardMaterial(Object.assign({ color: primary }, jerseyCfg)),
+      new THREE.MeshStandardMaterial(Object.assign({ color: primary }, jerseyCfg)),
+      new THREE.MeshStandardMaterial(Object.assign({ color: primary }, jerseyCfg)),
+      new THREE.MeshStandardMaterial(Object.assign({ color: primary }, jerseyCfg)),
+      new THREE.MeshStandardMaterial(Object.assign({ map: frontTex }, jerseyCfg)),
+      new THREE.MeshStandardMaterial(Object.assign({ map: backTex }, jerseyCfg)),
     ];
     const torso = new THREE.Mesh(torsoGeo, torsoMats);
     torso.position.y = torsoY;
@@ -186,9 +217,10 @@
     // --- Shoulders: slim yoke + full rounded caps for a natural shoulder line. ---
     const padsY = torsoY + torsoH / 2 + 0.06;
     const shoulderSpan = 1.18 * girth;
+    const shoulderMat = new THREE.MeshStandardMaterial({ color: primary, roughness: 0.62, metalness: 0.05 });
     const yoke = new THREE.Mesh(
       new THREE.CylinderGeometry(0.14, 0.14, shoulderSpan, 12),
-      new THREE.MeshLambertMaterial({ color: primary })
+      shoulderMat
     );
     yoke.rotation.z = Math.PI / 2;
     yoke.position.set(0, padsY, 0);
@@ -198,16 +230,25 @@
     for (const sgn of [-1, 1]) {
       const cap = new THREE.Mesh(
         new THREE.SphereGeometry(capR, 14, 12),
-        new THREE.MeshLambertMaterial({ color: primary })
+        shoulderMat
       );
       cap.position.set(sgn * shoulderSpan / 2, padsY, 0);
       cap.castShadow = true;
       g.add(cap);
+
+      // Beefy shoulder pad — slightly wider than the shoulder line, matte finish.
+      const pad = new THREE.Mesh(
+        new THREE.BoxGeometry(0.52 * girth, 0.22, 0.6 * girth),
+        shoulderMat
+      );
+      pad.position.set(sgn * shoulderSpan / 2, padsY + 0.12, 0);
+      pad.castShadow = true;
+      g.add(pad);
     }
 
     // --- Arms with shoulder + elbow pivots so arms can swing and elbow can
     //     stay bent ~90° pointing opposite of motion.
-    const armMat = new THREE.MeshLambertMaterial({ color: primary });
+    const armMat = new THREE.MeshStandardMaterial({ color: primary, roughness: 0.72, metalness: 0.0 });
     const upperLen = 0.6;
     const foreLen = 0.55;
     const armR = 0.135 * girth;
@@ -277,9 +318,17 @@
     g.add(head);
 
     // --- Helmet: ellipsoid shell with chin strap + earhole + facemask ---
+    // MeshPhysicalMaterial with clearcoat so the helmet reads like painted
+    // polycarbonate under the sun.
     const helmetY = headY + 0.11;
-    const helmetMat = new THREE.MeshLambertMaterial({ color: primary });
-    const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.36, 16, 14), helmetMat);
+    const helmetMat = new THREE.MeshPhysicalMaterial({
+      color: primary,
+      roughness: 0.32,
+      metalness: 0.05,
+      clearcoat: 1.0,
+      clearcoatRoughness: 0.12,
+    });
+    const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.36, 18, 14), helmetMat);
     helmet.position.y = helmetY;
     helmet.scale.set(1.08, 1.0, 1.18);
     helmet.castShadow = true;
@@ -287,7 +336,7 @@
     // Back lip / bumper
     const bumper = new THREE.Mesh(
       new THREE.TorusGeometry(0.34, 0.04, 6, 16),
-      new THREE.MeshLambertMaterial({ color: 0x101010 })
+      new THREE.MeshStandardMaterial({ color: 0x101010, roughness: 0.4, metalness: 0.2 })
     );
     bumper.rotation.x = Math.PI / 2;
     bumper.position.set(0, helmetY - 0.3, 0);
@@ -297,28 +346,50 @@
     for (const sgn of [-1, 1]) {
       const ear = new THREE.Mesh(
         new THREE.CircleGeometry(0.06, 10),
-        new THREE.MeshBasicMaterial({ color: 0x000000 })
+        new THREE.MeshStandardMaterial({ color: 0x000000, roughness: 0.9 })
       );
       ear.rotation.y = sgn * Math.PI / 2;
       ear.position.set(sgn * 0.4, helmetY - 0.02, 0);
       g.add(ear);
     }
-    // Facemask
+    // Facemask — thin cage of dark metal bars
+    const maskMat = new THREE.MeshStandardMaterial({ color: 0x707076, roughness: 0.35, metalness: 0.85 });
     const mask = new THREE.Mesh(
       new THREE.TorusGeometry(0.22, 0.035, 6, 14, Math.PI),
-      new THREE.MeshLambertMaterial({ color: 0x888888 })
+      maskMat
     );
     mask.position.set(0, helmetY - 0.1, 0.36);
     mask.rotation.x = Math.PI / 2;
     g.add(mask);
+    // Two horizontal facemask bars for more "cage" detail.
+    for (const yOff of [-0.08, 0.06]) {
+      const bar = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.018, 0.018, 0.28, 6),
+        maskMat
+      );
+      bar.rotation.z = Math.PI / 2;
+      bar.position.set(0, helmetY - 0.1 + yOff, 0.42);
+      g.add(bar);
+    }
     // Chin strap
     const strap = new THREE.Mesh(
       new THREE.TorusGeometry(0.2, 0.018, 4, 10, Math.PI * 0.9),
-      new THREE.MeshLambertMaterial({ color: 0xffffff })
+      new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.7 })
     );
     strap.position.set(0, helmetY - 0.28, 0.12);
     strap.rotation.x = Math.PI / 2.1;
     g.add(strap);
+
+    // Team-letter helmet decal on each side.
+    const logoLetter = (team.shortName || team.name || 'A').toString().trim().charAt(0).toUpperCase() || 'A';
+    const logoTex = helmetLogoTexture(logoLetter, secondaryHex);
+    const logoMat = new THREE.MeshBasicMaterial({ map: logoTex, transparent: true });
+    for (const sgn of [-1, 1]) {
+      const logo = new THREE.Mesh(new THREE.PlaneGeometry(0.26, 0.26), logoMat);
+      logo.position.set(sgn * 0.405, helmetY + 0.02, 0);
+      logo.rotation.y = sgn * Math.PI / 2;
+      g.add(logo);
+    }
 
     // Apply overall height scaling to the whole figure (feet remain on ground).
     g.scale.y = scaleY;
@@ -619,10 +690,20 @@
   };
 
   FB.createBall = function () {
-    const geom = new THREE.SphereGeometry(0.35, 12, 10);
+    const geom = new THREE.SphereGeometry(0.35, 16, 12);
     geom.scale(1, 0.6, 0.6);
-    FB.ball = new THREE.Mesh(geom, new THREE.MeshLambertMaterial({ color: 0x6a3a16 }));
+    // Pebble-grain leather: standard material + low metalness, medium roughness.
+    FB.ball = new THREE.Mesh(geom, new THREE.MeshStandardMaterial({
+      color: 0x7a4018, roughness: 0.55, metalness: 0.05,
+    }));
     FB.ball.castShadow = true;
+    // White laces — slim bar along the top.
+    const laces = new THREE.Mesh(
+      new THREE.BoxGeometry(0.02, 0.02, 0.26),
+      new THREE.MeshStandardMaterial({ color: 0xf6f3e6, roughness: 0.7 })
+    );
+    laces.position.set(0, 0.22, 0);
+    FB.ball.add(laces);
     FB.scene.add(FB.ball);
   };
 

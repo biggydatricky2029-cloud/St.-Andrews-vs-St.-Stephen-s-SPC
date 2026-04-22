@@ -174,16 +174,26 @@
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-  <script src="ratings.js?v=20260422h"></script>
-  <script src="playbook.js?v=20260422h"></script>
-  <script src="scene.js?v=20260422h"></script>
-  <script src="players.js?v=20260422h"></script>
-  <script src="controls.js?v=20260422h"></script>
-  <script src="logic-movement.js?v=20260422h"></script>
-  <script src="logic-play.js?v=20260422h"></script>
-  <script src="logic-special.js?v=20260422h"></script>
-  <script src="logic-clock.js?v=20260422h"></script>
-  <script src="logic-loop.js?v=20260422h"></script>
-  <script src="ui.js?v=20260422h"></script>
+  <!-- Post-processing (Pass 5): bloom + vignette. Loaded from r128 examples.
+       All optional — scene.js falls back to plain renderer.render if any
+       of these fail to load. -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/GammaCorrectionShader.js"></script>
+  <script src="ratings.js?v=20260422i"></script>
+  <script src="playbook.js?v=20260422i"></script>
+  <script src="scene.js?v=20260422i"></script>
+  <script src="players.js?v=20260422i"></script>
+  <script src="controls.js?v=20260422i"></script>
+  <script src="logic-movement.js?v=20260422i"></script>
+  <script src="logic-play.js?v=20260422i"></script>
+  <script src="logic-special.js?v=20260422i"></script>
+  <script src="logic-clock.js?v=20260422i"></script>
+  <script src="logic-loop.js?v=20260422i"></script>
+  <script src="ui.js?v=20260422i"></script>
 </body>
 </html>

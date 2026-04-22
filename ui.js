@@ -709,7 +709,7 @@
   }
 
   // ---- Bootstrap ----
-  const BUILD_TAG = 'BUILD-20260422h';
+  const BUILD_TAG = 'BUILD-20260422i';
   function paintVersionTag() {
     try {
       const host = document.body;
