@@ -136,27 +136,41 @@
 
   function resolveFG(powerPct, rating) {
     const s = FB.state;
-    const distYd = FB.specialMode === 'xp' ? 20 : Math.max(17, 117 - s.ballOn);
+    // specialMode may be cleared by a later handler — capture the kind now.
+    const wasXP = FB.specialMode === 'xp';
+    const wasFG = FB.specialMode === 'fg';
+    if (!wasXP && !wasFG) return; // already resolved (duplicate fire)
+    const distYd = wasXP ? 20 : Math.max(17, 117 - s.ballOn);
     // Success model: FG% baseline from rating + distance adjustment.
     let chance = 0.5 + (rating - 60) * 0.012 - Math.max(0, distYd - 25) * 0.02 + (powerPct - 60) * 0.004;
     chance = Math.max(0.1, Math.min(0.97, chance));
     const good = Math.random() < chance;
+    const num = FB.kickMeterFrom && FB.kickMeterFrom.player ? FB.kickMeterFrom.player.number : 0;
     if (good) {
-      if (FB.specialMode === 'xp') FB.state.score[s.possession] += 1;
-      else FB.state.score[s.possession] += 3;
-      FB.state.log.push((FB.specialMode === 'xp' ? 'XP' : 'FG') + ' GOOD');
-      FB.recordStat(s.possession, FB.kickMeterFrom.player.number,
-        FB.specialMode === 'xp' ? 'xpMade' : 'fieldGoalsMade', 1);
+      if (wasXP) s.score[s.possession] += 1;
+      else s.score[s.possession] += 3;
+      s.log.push((wasXP ? 'XP' : 'FG') + ' GOOD');
+      FB.recordStat(s.possession, num, wasXP ? 'xpMade' : 'fieldGoalsMade', 1);
     } else {
-      FB.state.log.push((FB.specialMode === 'xp' ? 'XP' : 'FG') + ' MISSED');
+      s.log.push((wasXP ? 'XP' : 'FG') + ' MISSED');
     }
-    const wasXP = FB.specialMode === 'xp';
-    FB.recordStat(s.possession, FB.kickMeterFrom.player.number,
-      wasXP ? 'xpAttempted' : 'fieldGoalsAttempted', 1);
+    FB.recordStat(s.possession, num, wasXP ? 'xpAttempted' : 'fieldGoalsAttempted', 1);
+
+    // Clear kicking state before we hand off to the next play.
     FB.specialMode = null;
     FB.ballState.inAir = false;
-    if (good || wasXP) FB.kickoffAfterScore();
-    else FB.turnoverOnDowns();
+    FB.ballState.vel.set(0, 0, 0);
+    FB.ballState.targetPlayer = null;
+
+    // Extra point (made OR missed) — scoring team kicks off to the opponent.
+    // Missed field goals turn the ball over on downs; made field goals kick off.
+    if (wasXP) {
+      FB.kickoffAfterScore();
+    } else if (good) {
+      FB.kickoffAfterScore();
+    } else {
+      FB.turnoverOnDowns();
+    }
   }
 
   // Called while the ball is in the air on a kickoff — sprints coverage down
