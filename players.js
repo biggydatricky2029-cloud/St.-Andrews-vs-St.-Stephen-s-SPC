@@ -9,6 +9,111 @@
   FB.ball = null;
   FB.ballState = { carried: true, vel: new THREE.Vector3(), inAir: false, targetPlayer: null, kind: 'run', airTime: 0 };
 
+  // ============================================================
+  //  Muscle-aware limb geometry
+  //  ----------------------------------------------------------
+  //  Each player's listed weight (110–250 lb on this roster) drives
+  //  a muscleFactor in [0.75, 1.5] applied ONLY to limb radii.
+  //  Bone lengths, joint positions, and rig hierarchy are unchanged.
+  //  Unique geometries are bucketed to the nearest 0.05 of muscleFactor
+  //  and shared across players, so we end up with ≈10 lathes total
+  //  rather than 22 players × 5 limbs.
+  // ============================================================
+  const MUSCLE_MIN_W = 110;
+  const MUSCLE_MAX_W = 250;
+
+  function computeMuscleFactor(player) {
+    const w = (player && player.weight && player.weight > 0) ? player.weight : null;
+    if (w == null) return 1.0;
+    const t = Math.max(0, Math.min(1, (w - MUSCLE_MIN_W) / (MUSCLE_MAX_W - MUSCLE_MIN_W)));
+    return 0.75 + t * 0.75;
+  }
+
+  // Silhouettes are (radius, y) at muscleFactor=1.0. The y range matches each
+  // limb segment's existing local extents so the new lathe drops into the
+  // same Mesh.position the cylinder used.
+  //
+  // - Upper arm sleeve (jersey): top→hem, length 0.27 → y ∈ [-0.135, +0.135]
+  // - Bicep (skin):              length 0.36 → y ∈ [-0.18,  +0.18]
+  //   Bicep peak at ~60% down the FULL upper arm (= top quarter of bicep mesh)
+  // - Forearm (skin):            length 0.55 → y ∈ [-0.275, +0.275]
+  //   Wider mass near the elbow, taper to wrist
+  // - Thigh (pants):             length 0.84 → y ∈ [-0.42,  +0.42]
+  //   Quad bulge ~35% down from hip
+  // - Calf (skin):               length 0.46 → y ∈ [-0.23,  +0.23]
+  //   Gastrocnemius bulge ~30% down from knee
+  const LIMB_PROFILES = {
+    sleeve: [
+      [0.001, +0.135],
+      [0.158, +0.130],
+      [0.152, +0.060],
+      [0.148, -0.020],
+      [0.144, -0.090],
+      [0.142, -0.135],
+    ],
+    bicep: [
+      [0.142, +0.180],   // matches sleeve hem
+      [0.156, +0.110],   // bicep peak (~60% down upper arm)
+      [0.144, +0.040],
+      [0.128, -0.030],
+      [0.112, -0.100],
+      [0.098, -0.160],
+      [0.001, -0.180],
+    ],
+    forearm: [
+      [0.001, +0.275],
+      [0.135, +0.265],   // elbow side
+      [0.142, +0.190],   // brachioradialis bulge
+      [0.130, +0.100],
+      [0.114, +0.020],
+      [0.098, -0.080],
+      [0.086, -0.180],
+      [0.078, -0.260],
+      [0.001, -0.275],   // wrist
+    ],
+    thigh: [
+      [0.001, +0.420],
+      [0.210, +0.405],   // hip
+      [0.235, +0.310],
+      [0.262, +0.165],   // quad/hamstring peak (~35% down from hip)
+      [0.246, +0.020],
+      [0.218, -0.140],
+      [0.196, -0.290],
+      [0.180, -0.410],   // knee side
+      [0.001, -0.420],
+    ],
+    calf: [
+      [0.001, +0.230],
+      [0.166, +0.220],   // knee side
+      [0.188, +0.155],
+      [0.206, +0.090],   // gastrocnemius peak (~30% down from knee)
+      [0.182, +0.000],
+      [0.156, -0.090],
+      [0.136, -0.180],
+      [0.124, -0.230],   // ankle side
+      [0.001, -0.230],
+    ],
+  };
+
+  const _limbGeoCache = new Map();
+  function _muscleBucket(mf) { return Math.round(mf / 0.05) * 0.05; }
+
+  function getLimbGeometry(kind, muscleFactor) {
+    const bucket = _muscleBucket(muscleFactor);
+    const key = kind + ':' + bucket.toFixed(2);
+    let geo = _limbGeoCache.get(key);
+    if (geo) return geo;
+    const profile = LIMB_PROFILES[kind];
+    const pts = new Array(profile.length);
+    for (let i = 0; i < profile.length; i++) {
+      pts[i] = new THREE.Vector2(profile[i][0] * bucket, profile[i][1]);
+    }
+    geo = new THREE.LatheGeometry(pts, 12);
+    geo.computeVertexNormals();
+    _limbGeoCache.set(key, geo);
+    return geo;
+  }
+
   function jerseyFrontTexture(num, bg, fg) {
     const c = document.createElement('canvas'); c.width = 128; c.height = 128;
     const ctx = c.getContext('2d');
@@ -88,7 +193,12 @@
     const heightIn = parseHeightInches(player.height) || 70;
     const weightLb = (player.weight && player.weight > 0) ? player.weight : 170;
     const scaleY = Math.max(0.85, Math.min(1.22, heightIn / 70));
-    const girth = Math.max(0.85, Math.min(1.55, Math.pow(weightLb / 170, 0.38)));
+    // Limb radii scale with muscleFactor (0.75–1.5). Torso/pads scale with a
+    // gentler torsoFactor so heavier players read as thicker overall but the
+    // weight delta is most visible in the arms and legs. Helmet is never
+    // scaled — every player wears the same shell size.
+    const muscleFactor = computeMuscleFactor(player);
+    const torsoFactor = 1.0 + (muscleFactor - 1.0) * 0.4;
 
     const g = new THREE.Group();
     const pantsMat = new THREE.MeshStandardMaterial({ color: secondary, roughness: 0.78, metalness: 0.0 });
@@ -98,13 +208,15 @@
     // kneePivot (at knee joint) -> knee ball + sock + calf + foot.
     // Body front is +Z local; rotating a pivot's X axis swings fwd/back.
     const footL = 0.42, footW = 0.22, footH = 0.1;
-    const hipX = 0.22 * girth;
+    const hipX = 0.22 * torsoFactor;          // hip spacing scales with torso
     const ankleY = footH;
     const calfH = 0.68, thighH = 0.84;
     const kneeY = ankleY + calfH;
     const thighTopY = kneeY + thighH;
-    const calfR = 0.17 * girth;
-    const thighRTop = 0.22 * girth, thighRBot = 0.19 * girth;
+    // Joint cover radii follow the limb radii so knee/ankle balls don't
+    // visually pop relative to a heavy player's thicker thigh/calf.
+    const calfR = 0.17 * muscleFactor;
+    const thighRTop = 0.22 * muscleFactor;     // used only for the stripe X-offset
     const rigLegs = {};
     for (const side of ['L', 'R']) {
       const dx = side === 'L' ? -hipX : hipX;
@@ -112,12 +224,10 @@
       hipPivot.position.set(dx, thighTopY, 0);
       g.add(hipPivot);
 
-      const thigh = new THREE.Mesh(
-        new THREE.CylinderGeometry(thighRTop, thighRBot, thighH, 10),
-        pantsMat
-      );
+      const thigh = new THREE.Mesh(getLimbGeometry('thigh', muscleFactor), pantsMat);
       thigh.position.set(0, -thighH / 2, 0);
       thigh.castShadow = true;
+      thigh.receiveShadow = true;
       hipPivot.add(thigh);
 
       // Pants side-stripe (NFL/high-school style) running down the outside.
@@ -133,25 +243,23 @@
       kneePivot.position.set(0, -thighH, 0);
       hipPivot.add(kneePivot);
 
-      const knee = new THREE.Mesh(new THREE.SphereGeometry(calfR * 1.1, 10, 8), pantsMat);
+      const knee = new THREE.Mesh(new THREE.SphereGeometry(calfR * 1.1, 12, 10), pantsMat);
       knee.position.set(0, 0, 0);
       knee.castShadow = true;
       kneePivot.add(knee);
 
       const sock = new THREE.Mesh(
-        new THREE.CylinderGeometry(calfR * 0.95, calfR * 0.9, 0.22, 10),
+        new THREE.CylinderGeometry(calfR * 0.95, calfR * 0.9, 0.22, 12),
         sockMat
       );
       sock.position.set(0, 0.11 - calfH, 0);
       sock.castShadow = true;
       kneePivot.add(sock);
 
-      const calf = new THREE.Mesh(
-        new THREE.CylinderGeometry(calfR * 1.05, calfR * 0.95, calfH - 0.22, 10),
-        skinMat
-      );
+      const calf = new THREE.Mesh(getLimbGeometry('calf', muscleFactor), skinMat);
       calf.position.set(0, 0.11 - calfH / 2, 0);
       calf.castShadow = true;
+      calf.receiveShadow = true;
       kneePivot.add(calf);
 
       const foot = new THREE.Mesh(new THREE.BoxGeometry(footW, footH, footL), cleatMat);
@@ -164,12 +272,12 @@
 
     // --- Pelvis / hip pad + belt ---
     const pelvisH = 0.3;
-    const pelvis = new THREE.Mesh(new THREE.BoxGeometry(0.95 * girth, pelvisH, 0.55 * girth), pantsMat);
+    const pelvis = new THREE.Mesh(new THREE.BoxGeometry(0.95 * torsoFactor, pelvisH, 0.55 * torsoFactor), pantsMat);
     pelvis.position.y = thighTopY + pelvisH / 2;
     pelvis.castShadow = true;
     g.add(pelvis);
     const belt = new THREE.Mesh(
-      new THREE.BoxGeometry(0.98 * girth, 0.08, 0.57 * girth),
+      new THREE.BoxGeometry(0.98 * torsoFactor, 0.08, 0.57 * torsoFactor),
       beltMat
     );
     belt.position.y = thighTopY + pelvisH + 0.04;
@@ -179,8 +287,8 @@
     const torsoH = 1.0;
     const torsoBottomY = thighTopY + pelvisH + 0.08;
     const torsoY = torsoBottomY + torsoH / 2;
-    const torsoTopW = 1.08 * girth, torsoBotW = 0.92 * girth;
-    const torsoTopD = 0.58 * girth, torsoBotD = 0.52 * girth;
+    const torsoTopW = 1.08 * torsoFactor, torsoBotW = 0.92 * torsoFactor;
+    const torsoTopD = 0.58 * torsoFactor, torsoBotD = 0.52 * torsoFactor;
     const frontTex = jerseyFrontTexture(player.number, primaryHex, secondaryHex);
     const lastName = (player.name || '').split(' ').slice(-1)[0];
     const backTex = jerseyBackTexture(player.number, lastName, primaryHex, secondaryHex);
@@ -216,7 +324,7 @@
 
     // --- Shoulders: slim yoke + full rounded caps for a natural shoulder line. ---
     const padsY = torsoY + torsoH / 2 + 0.06;
-    const shoulderSpan = 1.18 * girth;
+    const shoulderSpan = 1.18 * torsoFactor;
     const shoulderMat = new THREE.MeshStandardMaterial({ color: primary, roughness: 0.62, metalness: 0.05 });
     const yoke = new THREE.Mesh(
       new THREE.CylinderGeometry(0.14, 0.14, shoulderSpan, 12),
@@ -226,7 +334,7 @@
     yoke.position.set(0, padsY, 0);
     yoke.castShadow = true;
     g.add(yoke);
-    const capR = 0.22 * girth;
+    const capR = 0.22 * torsoFactor;
     for (const sgn of [-1, 1]) {
       const cap = new THREE.Mesh(
         new THREE.SphereGeometry(capR, 14, 12),
@@ -238,7 +346,7 @@
 
       // Beefy shoulder pad — slightly wider than the shoulder line, matte finish.
       const pad = new THREE.Mesh(
-        new THREE.BoxGeometry(0.52 * girth, 0.22, 0.6 * girth),
+        new THREE.BoxGeometry(0.52 * torsoFactor, 0.22, 0.6 * torsoFactor),
         shoulderMat
       );
       pad.position.set(sgn * shoulderSpan / 2, padsY + 0.12, 0);
@@ -251,7 +359,7 @@
     const armMat = new THREE.MeshStandardMaterial({ color: primary, roughness: 0.72, metalness: 0.0 });
     const upperLen = 0.6;
     const foreLen = 0.55;
-    const armR = 0.135 * girth;
+    const armR = 0.135 * muscleFactor;          // for joint-cover sphere only
     const rigArms = {};
     for (const side of ['L', 'R']) {
       const sgn = side === 'L' ? -1 : 1;
@@ -262,36 +370,33 @@
       shoulderPivot.position.set(shoulderX, shoulderY, 0);
       g.add(shoulderPivot);
 
-      const sleeve = new THREE.Mesh(
-        new THREE.CylinderGeometry(armR * 1.08, armR * 0.95, upperLen * 0.45, 10),
-        armMat
-      );
+      // Sleeve (jersey) — top portion of the upper arm, contoured at the deltoid.
+      const sleeve = new THREE.Mesh(getLimbGeometry('sleeve', muscleFactor), armMat);
       sleeve.position.set(0, -upperLen * 0.22, 0);
       sleeve.castShadow = true;
+      sleeve.receiveShadow = true;
       shoulderPivot.add(sleeve);
 
-      const bicep = new THREE.Mesh(
-        new THREE.CylinderGeometry(armR * 0.95, armR * 0.82, upperLen * 0.6, 10),
-        skinMat
-      );
+      // Bicep (skin) — bulges ~60% down the upper arm, tapers into the elbow.
+      const bicep = new THREE.Mesh(getLimbGeometry('bicep', muscleFactor), skinMat);
       bicep.position.set(0, -upperLen * 0.75, 0);
       bicep.castShadow = true;
+      bicep.receiveShadow = true;
       shoulderPivot.add(bicep);
 
       const elbowPivot = new THREE.Group();
       elbowPivot.position.set(0, -upperLen - 0.02, 0);
       shoulderPivot.add(elbowPivot);
 
-      const elbow = new THREE.Mesh(new THREE.SphereGeometry(armR * 0.92, 8, 6), skinMat);
+      const elbow = new THREE.Mesh(new THREE.SphereGeometry(armR * 0.92, 10, 8), skinMat);
       elbow.position.set(0, 0, 0);
       elbowPivot.add(elbow);
 
-      const fore = new THREE.Mesh(
-        new THREE.CylinderGeometry(armR * 0.82, armR * 0.66, foreLen, 10),
-        skinMat
-      );
+      // Forearm — wider near the elbow, taper to wrist.
+      const fore = new THREE.Mesh(getLimbGeometry('forearm', muscleFactor), skinMat);
       fore.position.set(0, -foreLen / 2, 0);
       fore.castShadow = true;
+      fore.receiveShadow = true;
       elbowPivot.add(fore);
 
       const glove = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.28, 0.2), gloveMat);
@@ -423,6 +528,39 @@
       gaitPhase: 0,
     };
   }
+
+  // Debug helper — places the lightest and heaviest currently-loaded players
+  // side by side and zooms the camera in. Call from the console after the
+  // pregame screen ('FB.showLineup()').
+  FB.showLineup = function () {
+    let lightP = null, heavyP = null, lightT = 'home', heavyT = 'home';
+    for (const team of ['home', 'away']) {
+      const t = FB.teams && FB.teams[team];
+      if (!t || !t.players) continue;
+      for (const p of t.players) {
+        if (!p.weight || p.weight <= 0) continue;
+        if (!lightP || p.weight < lightP.weight) { lightP = p; lightT = team; }
+        if (!heavyP || p.weight > heavyP.weight) { heavyP = p; heavyT = team; }
+      }
+    }
+    if (!lightP || !heavyP) { console.warn('Lineup: no rosters loaded yet'); return; }
+    if (FB.hideAllPlayers) FB.hideAllPlayers();
+    if (FB._lineupNodes) for (const n of FB._lineupNodes) FB.scene.remove(n);
+    const a = createPlayerMesh(lightP, lightT);
+    const b = createPlayerMesh(heavyP, heavyT);
+    a.mesh.position.set(-1.7, 0, 0);
+    b.mesh.position.set(+1.7, 0, 0);
+    a.mesh.rotation.y = b.mesh.rotation.y = 0;
+    FB.scene.add(a.mesh); FB.scene.add(b.mesh);
+    FB._lineupNodes = [a.mesh, b.mesh];
+    FB.camera.position.set(0, 3.6, 7.2);
+    FB.camera.lookAt(0, 2.4, 0);
+    console.log(
+      '[lineup] LIGHT #' + lightP.number + ' ' + lightP.name + ' ' + lightP.weight + 'lb' +
+      '   HEAVY #' + heavyP.number + ' ' + heavyP.name + ' ' + heavyP.weight + 'lb'
+    );
+    return { light: lightP, heavy: heavyP };
+  };
 
   FB.buildTeamMeshes = function (teamKey) {
     const team = FB.teams[teamKey];
