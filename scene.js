@@ -40,7 +40,7 @@ window.FB = window.FB || {};
       dbJumpRouteChance: 0.000,
       lbReactionDelay: 0.55, lbPursuitSpeed: 0.80,
       safetyReactionDelay: 0.45,
-      fumbleChanceOnHit: 0.03, fumbleChanceOnSack: 0.06, interceptionChance: 0.000,
+      fumbleChanceOnHit: 0.01, fumbleChanceOnSack: 0.02, interceptionChance: 0.000,
       cpuQBDecisionDelay: 0.90, cpuRouteSharpness: 0.40,
     },
     jv: {
@@ -49,7 +49,7 @@ window.FB = window.FB || {};
       dbJumpRouteChance: 0.003,
       lbReactionDelay: 0.40, lbPursuitSpeed: 0.92,
       safetyReactionDelay: 0.32,
-      fumbleChanceOnHit: 0.055, fumbleChanceOnSack: 0.10, interceptionChance: 0.006,
+      fumbleChanceOnHit: 0.02, fumbleChanceOnSack: 0.04, interceptionChance: 0.006,
       cpuQBDecisionDelay: 0.65, cpuRouteSharpness: 0.60,
     },
     varsity: {
@@ -58,7 +58,7 @@ window.FB = window.FB || {};
       dbJumpRouteChance: 0.008,
       lbReactionDelay: 0.25, lbPursuitSpeed: 1.00,
       safetyReactionDelay: 0.19,
-      fumbleChanceOnHit: 0.09, fumbleChanceOnSack: 0.16, interceptionChance: 0.013,
+      fumbleChanceOnHit: 0.03, fumbleChanceOnSack: 0.06, interceptionChance: 0.013,
       cpuQBDecisionDelay: 0.42, cpuRouteSharpness: 0.80,
     },
     allspc: {
@@ -67,7 +67,7 @@ window.FB = window.FB || {};
       dbJumpRouteChance: 0.018,
       lbReactionDelay: 0.13, lbPursuitSpeed: 1.08,
       safetyReactionDelay: 0.10,
-      fumbleChanceOnHit: 0.13, fumbleChanceOnSack: 0.22, interceptionChance: 0.022,
+      fumbleChanceOnHit: 0.05, fumbleChanceOnSack: 0.10, interceptionChance: 0.022,
       cpuQBDecisionDelay: 0.24, cpuRouteSharpness: 0.95,
     },
   };
