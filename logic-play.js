@@ -121,12 +121,16 @@
     if (s.phase !== 'presnap') return;
     s.phase = 'play';
     FB.playTicker = 0;
+    FB.snapStartT = (typeof performance !== 'undefined' ? performance.now() : Date.now()) / 1000;
     for (const e of FB.offenseOf(s.possession)) e.target.set(0, 0, 0);
     if (s.playType === 'run') {
       setTimeout(() => FB.handoffToRB(), 80);
     } else if (s.possession !== FB.userTeam) {
-      // AI QB: throw after 1.6–2.4s to the most open receiver.
-      const delay = 1600 + Math.random() * 800;
+      // AI QB: throw after a difficulty-tuned hold (varsity ~1.5s, freshman ~2.4s)
+      // plus a small randomized window so reads aren't perfectly metronomic.
+      const cfg = FB.getDiffCfg ? FB.getDiffCfg() : null;
+      const base = (cfg ? cfg.cpuQBDecisionDelay : 0.6) * 1000;
+      const delay = base + 600 + Math.random() * 600;
       setTimeout(() => aiThrow(), delay);
     } else if (s.playType === 'pass') {
       // User is on offense for a pass play — show numbered receiver chips.
@@ -186,6 +190,7 @@
     FB.ballState.kind = 'pass';
     FB.ballState.targetPlayer = receiver;
     FB.ballState.aimXZ = { x: tgt.x, z: tgt.z };
+    FB.ballState.intercepted = false;
     FB.ballCarrier = null;
     // Vertical solve: y(t) = from.y + vy*t - 0.5*g*t^2; want y(flight)=tgt.y
     const g = 9.8;
@@ -426,7 +431,138 @@
     FB.playCam.shake = 0.4;
     FB.state.log.push('Tackle by #' + def.player.number);
     recordStat(carrier.team === 'home' ? 'home' : 'away', def.player.number, 'tackles', 1, def.team);
+
+    // Sack vs open-field hit — sack uses the higher fumble odds.
+    const cfg = FB.getDiffCfg ? FB.getDiffCfg() : null;
+    const losX = FB.losLine ? FB.losLine.position.x : 0;
+    const fwd = FB.forwardDir(carrier.team);
+    const isQB = carrier.role === 'QB';
+    const behindLOS = (carrier.mesh.position.x - losX) * fwd < 0;
+    const wasSack = isQB && behindLOS && FB.state.playType === 'pass';
+    if (cfg) {
+      const odds = wasSack ? cfg.fumbleChanceOnSack : cfg.fumbleChanceOnHit;
+      if (Math.random() < odds) {
+        triggerFumble(def, carrier, wasSack);
+        return;
+      }
+    }
+    if (wasSack) {
+      recordStat(carrier.team === 'home' ? 'home' : 'away', def.player.number, 'sacks', 1, def.team);
+    }
     setTimeout(() => FB.endPlay({ reason: 'tackle' }), 150);
+  };
+
+  // Forced fumble — closest defender (the tackler counts) recovers it most
+  // of the time; a small random factor lets the offense fall on a few. On
+  // defense recovery, possession flips and the ball is spotted at the hit.
+  function triggerFumble(tackler, carrier, wasSack) {
+    const s = FB.state;
+    const offTeam = carrier.team;
+    const defTeam = offTeam === 'home' ? 'away' : 'home';
+    const hitPos = carrier.mesh.position.clone();
+    // Closest offensive teammate vs closest defender — defender wins ties.
+    let bestDef = tackler, defD = tackler.mesh.position.distanceTo(hitPos);
+    let bestOff = null, offD = Infinity;
+    for (const d of (FB.activePlayers[defTeam] || [])) {
+      if (!d.mesh.visible || d.isDown) continue;
+      const dist = d.mesh.position.distanceTo(hitPos);
+      if (dist < defD) { defD = dist; bestDef = d; }
+    }
+    for (const o of (FB.activePlayers[offTeam] || [])) {
+      if (!o.mesh.visible || o.isDown || o === carrier) continue;
+      const dist = o.mesh.position.distanceTo(hitPos);
+      if (dist < offD) { offD = dist; bestOff = o; }
+    }
+    const defWins = (defD + Math.random() * 1.5) < (offD + Math.random() * 1.5);
+
+    recordStat(offTeam, tackler.player.number, 'forcedFumbles', 1, defTeam);
+
+    if (defWins) {
+      // Defense recovers — possession flips, ball spotted at fumble location.
+      const yardOff = FB.yardFromBallX(hitPos.x, offTeam);
+      const yardDef = Math.max(1, Math.min(99, Math.round(100 - yardOff)));
+      s.possession = defTeam;
+      s.ballOn = yardDef; s.los = yardDef; s.down = 1; s.distance = 10;
+      s.spotZ = FB.computeSpotZ ? FB.computeSpotZ(hitPos.z) : 0;
+      recordStat(offTeam, bestDef.player.number, 'fumbleRecoveries', 1, defTeam);
+      FB.flashWarn && FB.flashWarn(wasSack ? 'STRIP-SACK!' : 'FUMBLE — RECOVERED!');
+      FB.state.log.push('FUMBLE recovered by ' + FB.teams[defTeam].shortName + ' #' + bestDef.player.number);
+      // End the play cleanly so endPlay's spotting/walk-on can run with the
+      // new possession already in place. Skip the carrier-based gain calc
+      // by detaching the ball before endPlay reads it.
+      FB.ballCarrier = null;
+      FB.ballState.carried = false;
+      FB.state.phase = 'deadball';
+      const losX = FB.ballXFromYard(s.ballOn, s.possession);
+      setTimeout(() => {
+        FB.ball.position.set(losX, 0.3, s.spotZ);
+        if (FB.startRefSpot) {
+          FB.startRefSpot({ x: hitPos.x, z: hitPos.z }, { x: losX, z: s.spotZ }, () => FB.setupPlay('pass'));
+        } else {
+          setTimeout(() => FB.setupPlay('pass'), 700);
+        }
+      }, 200);
+    } else {
+      // Offense recovers — keep possession but the play ends here.
+      FB.flashWarn && FB.flashWarn('FUMBLE — OFFENSE RECOVERS');
+      FB.state.log.push('FUMBLE recovered by ' + FB.teams[offTeam].shortName);
+      setTimeout(() => FB.endPlay({ reason: 'fumble' }), 200);
+    }
+  }
+
+  // Pass interception check — called from logic-movement during ball flight.
+  // Returns true if a defender picked the pass (and ends the play).
+  FB.checkInterception = function () {
+    const cfg = FB.getDiffCfg ? FB.getDiffCfg() : null;
+    if (!cfg || !cfg.interceptionChance || !FB.ballState.inAir) return false;
+    const offTeam = FB.state.possession;
+    const defTeam = offTeam === 'home' ? 'away' : 'home';
+    const ballPos = FB.ball.position;
+    const tp = FB.ballState.targetPlayer;
+    for (const d of (FB.activePlayers[defTeam] || [])) {
+      if (!d.mesh.visible || d.isDown) continue;
+      if (!['LCB','RCB','FS','SS','MLB','WLB','SLB'].includes(d.role)) continue;
+      const dx = ballPos.x - d.mesh.position.x;
+      const dz = ballPos.z - d.mesh.position.z;
+      const dy = ballPos.y - ((d.mesh.position.y || 0) + 2.1);
+      const horiz = Math.hypot(dx, dz);
+      if (horiz > 1.8 || Math.abs(dy) > 1.6) continue;
+      let chance = cfg.interceptionChance;
+      // Tight man coverage doubles the pick odds.
+      if (tp && d.mesh.position.distanceTo(tp.mesh.position) < cfg.dbCoverageRadius) {
+        chance *= 2.2;
+      }
+      if (Math.random() < chance) {
+        FB.ballState.inAir = false;
+        FB.ballState.intercepted = true;
+        FB.ballState.targetPlayer = null;
+        FB.attachBallTo(d);
+        recordStat(offTeam, d.player.number, 'interceptions', 1, defTeam);
+        FB.flashWarn && FB.flashWarn('INTERCEPTION!');
+        FB.state.log.push('INTERCEPTED by ' + FB.teams[defTeam].shortName + ' #' + d.player.number);
+        // Possession swap, spot at the catch point.
+        const s = FB.state;
+        const yardOff = FB.yardFromBallX(d.mesh.position.x, offTeam);
+        const yardDef = Math.max(1, Math.min(99, Math.round(100 - yardOff)));
+        s.possession = defTeam;
+        s.ballOn = yardDef; s.los = yardDef; s.down = 1; s.distance = 10;
+        s.spotZ = FB.computeSpotZ ? FB.computeSpotZ(d.mesh.position.z) : 0;
+        FB.ballCarrier = null;
+        FB.ballState.carried = false;
+        FB.state.phase = 'deadball';
+        const losX = FB.ballXFromYard(s.ballOn, s.possession);
+        setTimeout(() => {
+          FB.ball.position.set(losX, 0.3, s.spotZ);
+          if (FB.startRefSpot) {
+            FB.startRefSpot({ x: d.mesh.position.x, z: d.mesh.position.z }, { x: losX, z: s.spotZ }, () => FB.setupPlay('pass'));
+          } else {
+            setTimeout(() => FB.setupPlay('pass'), 700);
+          }
+        }, 250);
+        return true;
+      }
+    }
+    return false;
   };
 
   // Track in-game stats.

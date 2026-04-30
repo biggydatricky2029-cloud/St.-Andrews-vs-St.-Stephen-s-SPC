@@ -29,6 +29,51 @@ window.FB = window.FB || {};
   };
   FB.diffMult = { freshman: 0.86, jv: 1.05, varsity: 1.27, allspc: 1.45, easy: 0.88, normal: 1.10, hard: 1.27 };
   FB.diffLabels = { freshman: 'FRESHMAN', jv: 'JV', varsity: 'VARSITY', allspc: 'ALL SPC' };
+
+  // Per-tier AI tuning — reaction delays (seconds), pursuit speed multipliers,
+  // and turnover roll chances. Snap reaction is gated by FB.snapStartT (set in
+  // FB.snapBall). Lower delay = quicker react. Higher pursuit = closer cover.
+  FB.diffConfig = {
+    freshman: {
+      dLineReactionDelay: 0.60, dLinePressureSpeed: 0.85, dLineShedBlock: 0.10,
+      dbReactionDelay: 0.50, dbManTrackingSpeed: 0.80, dbCoverageRadius: 7.0,
+      dbJumpRouteChance: 0.000,
+      lbReactionDelay: 0.55, lbPursuitSpeed: 0.80,
+      safetyReactionDelay: 0.45,
+      fumbleChanceOnHit: 0.03, fumbleChanceOnSack: 0.06, interceptionChance: 0.000,
+      cpuQBDecisionDelay: 0.90,
+    },
+    jv: {
+      dLineReactionDelay: 0.45, dLinePressureSpeed: 0.92, dLineShedBlock: 0.18,
+      dbReactionDelay: 0.35, dbManTrackingSpeed: 0.90, dbCoverageRadius: 5.5,
+      dbJumpRouteChance: 0.003,
+      lbReactionDelay: 0.40, lbPursuitSpeed: 0.92,
+      safetyReactionDelay: 0.32,
+      fumbleChanceOnHit: 0.055, fumbleChanceOnSack: 0.10, interceptionChance: 0.006,
+      cpuQBDecisionDelay: 0.65,
+    },
+    varsity: {
+      dLineReactionDelay: 0.28, dLinePressureSpeed: 0.98, dLineShedBlock: 0.28,
+      dbReactionDelay: 0.20, dbManTrackingSpeed: 1.00, dbCoverageRadius: 3.5,
+      dbJumpRouteChance: 0.008,
+      lbReactionDelay: 0.25, lbPursuitSpeed: 1.00,
+      safetyReactionDelay: 0.19,
+      fumbleChanceOnHit: 0.09, fumbleChanceOnSack: 0.16, interceptionChance: 0.013,
+      cpuQBDecisionDelay: 0.42,
+    },
+    allspc: {
+      dLineReactionDelay: 0.14, dLinePressureSpeed: 1.04, dLineShedBlock: 0.40,
+      dbReactionDelay: 0.10, dbManTrackingSpeed: 1.10, dbCoverageRadius: 2.0,
+      dbJumpRouteChance: 0.018,
+      lbReactionDelay: 0.13, lbPursuitSpeed: 1.08,
+      safetyReactionDelay: 0.10,
+      fumbleChanceOnHit: 0.13, fumbleChanceOnSack: 0.22, interceptionChance: 0.022,
+      cpuQBDecisionDelay: 0.24,
+    },
+  };
+  FB.getDiffCfg = function () {
+    return FB.diffConfig[FB.state.difficulty] || FB.diffConfig.varsity;
+  };
   FB.teams = { home: null, away: null };
   FB.lineups = { home: null, away: null };
 

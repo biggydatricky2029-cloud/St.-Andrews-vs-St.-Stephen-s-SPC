@@ -148,6 +148,9 @@
     const pos = FB.state.possession;
     if (FB.state.phase !== 'play') return;
     const reaction = FB.diffMult[FB.state.difficulty] || 1;
+    const cfg = FB.getDiffCfg ? FB.getDiffCfg() : null;
+    const nowT = (typeof performance !== 'undefined' ? performance.now() : Date.now()) / 1000;
+    const sinceSnap = FB.snapStartT ? Math.max(0, nowT - FB.snapStartT) : 999;
     const carrier = FB.ballCarrier;
     const defTeam = pos === 'home' ? 'away' : 'home';
     const losX = FB.losLine ? FB.losLine.position.x : 0;
@@ -156,6 +159,22 @@
 
     for (const ent of FB.defendersOf(pos)) {
       if (ent.isDown) continue;
+
+      // Per-role reaction delay off the snap. Until the delay elapses, AI
+      // defenders just decelerate in place — the user-controlled defender is
+      // exempt so the human can always move. Kickoff coverage uses its own
+      // pursuit pipeline so we skip the gate there.
+      if (cfg && ent !== userCtrl && FB.specialMode !== 'kickoff') {
+        let roleDelay = 0;
+        if (['LE','RE','DT','NT'].includes(ent.role)) roleDelay = cfg.dLineReactionDelay;
+        else if (['MLB','WLB','SLB'].includes(ent.role)) roleDelay = cfg.lbReactionDelay;
+        else if (['LCB','RCB'].includes(ent.role)) roleDelay = cfg.dbReactionDelay;
+        else if (['FS','SS'].includes(ent.role)) roleDelay = cfg.safetyReactionDelay;
+        if (sinceSnap < roleDelay) {
+          ent.vel.multiplyScalar(Math.max(0, 1 - dt * 8));
+          continue;
+        }
+      }
 
       // User-controlled defender: joystick input.
       if (ent === userCtrl && FB.state.phase === 'play') {
@@ -225,7 +244,16 @@
         }
         // Kickoff coverage sprints so the returner gets swarmed within seconds.
         const koChase = FB.specialMode === 'kickoff' ? 1.45 : 1;
-        steerToward(ent, target, dt, reaction * 0.95 * koChase);
+        // Role-aware pursuit multiplier from the difficulty config — tighter
+        // man coverage, faster LB pursuit, slightly slower DL rush so the QB
+        // gets a real pocket on every tier.
+        let roleMul = 1;
+        if (cfg) {
+          if (['LCB','RCB'].includes(ent.role)) roleMul = cfg.dbManTrackingSpeed;
+          else if (['MLB','WLB','SLB'].includes(ent.role)) roleMul = cfg.lbPursuitSpeed;
+          else if (['LE','RE','DT','NT'].includes(ent.role)) roleMul = cfg.dLinePressureSpeed;
+        }
+        steerToward(ent, target, dt, reaction * 0.95 * koChase * roleMul);
 
         // OL engagement: if a blocker is walling this defender off before
         // they've sneaked past the LOS, drag their velocity heavily. They
@@ -324,6 +352,13 @@
       FB.ballState.inAir = false;
       if (FB.onBallLanded) FB.onBallLanded();
     }
+    // Interception check: while the ball is in the air on a pass, any
+    // nearby DB/LB/safety can jump the route and pick it. Roll once per
+    // frame against the difficulty INT chance; tight coverage doubles odds.
+    if (FB.ballState.kind === 'pass' && !FB.ballState.intercepted && FB.checkInterception) {
+      if (FB.checkInterception()) return;
+    }
+
     // Catch check: the ball is caught when it enters the receiver's catch
     // pocket — close in the horizontal plane and near hand/chest height.
     if (FB.ballState.targetPlayer && FB.ballState.kind === 'pass') {
