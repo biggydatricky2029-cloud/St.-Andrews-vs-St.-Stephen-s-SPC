@@ -56,14 +56,18 @@
       [0.156, +0.110],   // bicep peak (~60% down upper arm)
       [0.144, +0.040],
       [0.128, -0.030],
-      [0.112, -0.100],
-      [0.098, -0.160],
+      [0.114, -0.100],
+      [0.108, -0.140],   // wider lower bicep so it tapers into the elbow
+      [0.090, -0.165],   // rounded dome — replaces the elbow sphere cover
+      [0.060, -0.176],
       [0.001, -0.180],
     ],
     forearm: [
       [0.001, +0.275],
-      [0.135, +0.265],   // elbow side
-      [0.142, +0.190],   // brachioradialis bulge
+      [0.060, +0.270],   // rounded dome at the elbow side (no sphere needed)
+      [0.110, +0.262],
+      [0.138, +0.250],   // brachioradialis bulge starts
+      [0.142, +0.190],   // brachioradialis bulge peak
       [0.130, +0.100],
       [0.114, +0.020],
       [0.098, -0.080],
@@ -79,13 +83,16 @@
       [0.246, +0.020],
       [0.218, -0.140],
       [0.196, -0.290],
-      [0.180, -0.410],   // knee side
+      [0.184, -0.390],   // wider just above the knee
+      [0.158, -0.408],   // rounded knee cap (replaces sphere)
+      [0.108, -0.416],
       [0.001, -0.420],
     ],
     calf: [
       [0.001, +0.230],
-      [0.166, +0.220],   // knee side
-      [0.188, +0.155],
+      [0.082, +0.225],   // rounded dome at the knee side
+      [0.140, +0.218],
+      [0.176, +0.205],   // upper gastroc
       [0.206, +0.090],   // gastrocnemius peak (~30% down from knee)
       [0.182, +0.000],
       [0.156, -0.090],
@@ -243,10 +250,8 @@
       kneePivot.position.set(0, -thighH, 0);
       hipPivot.add(kneePivot);
 
-      const knee = new THREE.Mesh(new THREE.SphereGeometry(calfR * 1.1, 12, 10), pantsMat);
-      knee.position.set(0, 0, 0);
-      knee.castShadow = true;
-      kneePivot.add(knee);
+      // Knee joint cover removed — the thigh and calf lathe profiles are
+      // shaped so their domed ends meet flush at the knee pivot.
 
       const sock = new THREE.Mesh(
         new THREE.CylinderGeometry(calfR * 0.95, calfR * 0.9, 0.22, 12),
@@ -359,7 +364,6 @@
     const armMat = new THREE.MeshStandardMaterial({ color: primary, roughness: 0.72, metalness: 0.0 });
     const upperLen = 0.6;
     const foreLen = 0.55;
-    const armR = 0.135 * muscleFactor;          // for joint-cover sphere only
     const rigArms = {};
     for (const side of ['L', 'R']) {
       const sgn = side === 'L' ? -1 : 1;
@@ -388,9 +392,8 @@
       elbowPivot.position.set(0, -upperLen - 0.02, 0);
       shoulderPivot.add(elbowPivot);
 
-      const elbow = new THREE.Mesh(new THREE.SphereGeometry(armR * 0.92, 10, 8), skinMat);
-      elbow.position.set(0, 0, 0);
-      elbowPivot.add(elbow);
+      // Elbow joint cover removed — the bicep and forearm lathes terminate
+      // in domed caps that meet flush at the elbow pivot.
 
       // Forearm — wider near the elbow, taper to wrist.
       const fore = new THREE.Mesh(getLimbGeometry('forearm', muscleFactor), skinMat);
