@@ -444,15 +444,19 @@
     FB.state.log.push('Tackle by #' + def.player.number);
     recordStat(carrier.team === 'home' ? 'home' : 'away', def.player.number, 'tackles', 1, def.team);
 
-    // Sack vs open-field hit — sack uses the higher fumble odds.
+    // Sack vs open-field hit — sack uses the higher fumble odds. A QB
+    // scrambling out of the pocket (past the LOS on a pass play) takes a
+    // 4x fumble multiplier since QBs carry less securely than RBs.
     const cfg = FB.getDiffCfg ? FB.getDiffCfg() : null;
     const losX = FB.losLine ? FB.losLine.position.x : 0;
     const fwd = FB.forwardDir(carrier.team);
     const isQB = carrier.role === 'QB';
     const behindLOS = (carrier.mesh.position.x - losX) * fwd < 0;
     const wasSack = isQB && behindLOS && FB.state.playType === 'pass';
+    const wasScramble = isQB && !behindLOS && FB.state.playType === 'pass';
     if (cfg) {
-      const odds = wasSack ? cfg.fumbleChanceOnSack : cfg.fumbleChanceOnHit;
+      let odds = wasSack ? cfg.fumbleChanceOnSack : cfg.fumbleChanceOnHit;
+      if (wasScramble) odds *= 4;
       if (Math.random() < odds) {
         triggerFumble(def, carrier, wasSack);
         return;
