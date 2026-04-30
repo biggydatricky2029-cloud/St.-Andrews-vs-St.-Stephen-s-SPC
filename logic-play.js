@@ -97,10 +97,22 @@
 
   function applyOffensiveRoutes(off) {
     const dir = FB.forwardDir(FB.state.possession);
+    // When the AI is the offense, easier difficulties get sloppier cuts:
+    // each waypoint is jittered by (1 - sharpness) * 1.5 yards. The starting
+    // position (waypoint 0) is left untouched so receivers don't teleport.
+    const aiOnOffense = FB.state.possession !== FB.userTeam;
+    const cfg = (FB.getDiffCfg && aiOnOffense) ? FB.getDiffCfg() : null;
+    const slop = cfg ? (1 - cfg.cpuRouteSharpness) * 1.5 : 0;
     for (const e of FB.offenseOf(FB.state.possession)) {
       const rt = off.routes && off.routes[e.role];
       if (rt && rt.length) {
         e.route = FB.expandRoute(rt, e.mesh.position, dir);
+        if (slop > 0) {
+          for (let i = 1; i < e.route.length; i++) {
+            e.route[i].x += (Math.random() - 0.5) * slop;
+            e.route[i].z += (Math.random() - 0.5) * slop;
+          }
+        }
         e.routeIdx = 0;
       } else {
         e.route = null;

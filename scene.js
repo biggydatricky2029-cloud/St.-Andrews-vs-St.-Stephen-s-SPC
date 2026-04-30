@@ -41,7 +41,7 @@ window.FB = window.FB || {};
       lbReactionDelay: 0.55, lbPursuitSpeed: 0.80,
       safetyReactionDelay: 0.45,
       fumbleChanceOnHit: 0.03, fumbleChanceOnSack: 0.06, interceptionChance: 0.000,
-      cpuQBDecisionDelay: 0.90,
+      cpuQBDecisionDelay: 0.90, cpuRouteSharpness: 0.40,
     },
     jv: {
       dLineReactionDelay: 0.45, dLinePressureSpeed: 0.92, dLineShedBlock: 0.18,
@@ -50,7 +50,7 @@ window.FB = window.FB || {};
       lbReactionDelay: 0.40, lbPursuitSpeed: 0.92,
       safetyReactionDelay: 0.32,
       fumbleChanceOnHit: 0.055, fumbleChanceOnSack: 0.10, interceptionChance: 0.006,
-      cpuQBDecisionDelay: 0.65,
+      cpuQBDecisionDelay: 0.65, cpuRouteSharpness: 0.60,
     },
     varsity: {
       dLineReactionDelay: 0.28, dLinePressureSpeed: 0.98, dLineShedBlock: 0.28,
@@ -59,7 +59,7 @@ window.FB = window.FB || {};
       lbReactionDelay: 0.25, lbPursuitSpeed: 1.00,
       safetyReactionDelay: 0.19,
       fumbleChanceOnHit: 0.09, fumbleChanceOnSack: 0.16, interceptionChance: 0.013,
-      cpuQBDecisionDelay: 0.42,
+      cpuQBDecisionDelay: 0.42, cpuRouteSharpness: 0.80,
     },
     allspc: {
       dLineReactionDelay: 0.14, dLinePressureSpeed: 1.04, dLineShedBlock: 0.40,
@@ -68,7 +68,7 @@ window.FB = window.FB || {};
       lbReactionDelay: 0.13, lbPursuitSpeed: 1.08,
       safetyReactionDelay: 0.10,
       fumbleChanceOnHit: 0.13, fumbleChanceOnSack: 0.22, interceptionChance: 0.022,
-      cpuQBDecisionDelay: 0.24,
+      cpuQBDecisionDelay: 0.24, cpuRouteSharpness: 0.95,
     },
   };
   FB.getDiffCfg = function () {
