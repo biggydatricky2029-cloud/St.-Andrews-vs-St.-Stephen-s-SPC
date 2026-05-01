@@ -556,22 +556,51 @@ function pvpConnect(roomCode, playerName, team) {
 // ============================================================
 function pvpHandleMessage(msg) {
   switch (msg.type) {
+    case 'hello':
+      pvp.selfId = msg.selfId;
+      break;
+
     case 'lobby_update': {
-      const players = Object.values(msg.players || {});
-      const opponent = players.find(p => p.name !== pvp.myName);
+      const all = msg.players || {};
+      const ids = Object.keys(all);
+      const me = pvp.selfId && all[pvp.selfId] ? all[pvp.selfId] : null;
+      const opponent = ids.map(id => all[id]).find((p, i) => ids[i] !== pvp.selfId);
+
+      if (me) {
+        document.getElementById('lobby-my-ready').style.display = me.ready ? 'inline-block' : 'none';
+      }
       if (opponent) {
         document.getElementById('lobby-opp-name').textContent = opponent.name;
         document.getElementById('lobby-opp-team').textContent =
           opponent.team === 'highlanders' ? 'Highlanders' : 'Spartans';
         document.getElementById('lobby-spinner').style.display = 'none';
-        document.getElementById('lobby-status').textContent = 'Opponent joined! Ready up when set.';
-        if (opponent.ready) document.getElementById('lobby-opp-ready').style.display = 'inline-block';
+        document.getElementById('lobby-opp-ready').style.display =
+          opponent.ready ? 'inline-block' : 'none';
         pvp.opponentName = opponent.name;
+
+        const bothReady = me && me.ready && opponent.ready;
+        document.getElementById('lobby-status').textContent = bothReady
+          ? 'Both ready -- starting game...'
+          : (me && me.ready
+              ? 'Waiting for opponent to ready up...'
+              : (opponent.ready
+                  ? 'Opponent is ready -- ready up when set.'
+                  : 'Opponent joined! Ready up when set.'));
+      } else {
+        document.getElementById('lobby-opp-name').textContent = 'Waiting...';
+        document.getElementById('lobby-opp-team').textContent = '--';
+        document.getElementById('lobby-opp-ready').style.display = 'none';
+        document.getElementById('lobby-status').textContent =
+          (me && me.ready) ? 'Ready -- waiting for opponent to join...'
+                           : 'Waiting for opponent to join...';
       }
       break;
     }
     case 'game_start': {
-      pvp.isHost = (msg.hostId === (pvp.socket && pvp.socket._socketId));
+      pvp.isHost = (msg.hostId === pvp.selfId);
+      const assignments = msg.assignments || [];
+      pvp.myAssignment = assignments.find(a => a.playerId === pvp.selfId) || null;
+      pvp.opponentAssignment = assignments.find(a => a.playerId !== pvp.selfId) || null;
       document.getElementById('pvp-overlay').classList.remove('active');
       pvpStartLocalGame(pvp.myTeam, pvp.isHost);
       break;
@@ -674,15 +703,54 @@ function pvpDisconnect() {
 // RECEIVE HOOKS — wired to the existing FB game engine
 // ============================================================
 function pvpStartLocalGame(team, isHost) {
-  // The pre-game UI locks the user to Highlanders. For PvP we override
-  // FB.userTeam directly so the player controls whichever side the lobby
-  // assigned them to, then trigger the existing start flow.
-  if (window.FB) {
-    window.FB.userTeam = (team === 'spartans') ? 'away' : 'home';
-  }
+  if (window.FB) applyPvPTeamAssignments();
   const startBtn = document.getElementById('pgStart');
   if (startBtn) startBtn.click();
-  console.log('[pvp] game starting -- team:', team, 'isHost:', isHost);
+  console.log('[pvp] game starting -- team:', team, 'isHost:', isHost,
+              'side:', pvp.myAssignment && pvp.myAssignment.side,
+              'alt:', pvp.myAssignment && pvp.myAssignment.altColors);
+}
+
+// When both players pick the same team, the server assigns one of them
+// altColors=true. We clone the chosen team into the other slot so both sides
+// of the field share the same roster, then darken the alt side's primary
+// color so the two are visually distinguishable on the field.
+function applyPvPTeamAssignments() {
+  const FB = window.FB;
+  if (!FB || !FB.teams) return;
+  const me  = pvp.myAssignment;
+  const opp = pvp.opponentAssignment;
+  if (!me || !opp) {
+    // Fallback: legacy path that just sets userTeam.
+    FB.userTeam = (pvp.myTeam === 'spartans') ? 'away' : 'home';
+    return;
+  }
+
+  // If both players are on the same team, clone the source team data into
+  // the other side slot so the engine has 22 distinct entities to render.
+  if (me.team === opp.team) {
+    const sourceKey = (me.team === 'highlanders') ? 'home' : 'away';
+    const otherKey  = sourceKey === 'home' ? 'away' : 'home';
+    const cloneTeam = JSON.parse(JSON.stringify(FB.teams[sourceKey]));
+    FB.teams[otherKey] = cloneTeam;
+    if (FB.lineups) FB.lineups[otherKey] = JSON.parse(JSON.stringify(FB.lineups[sourceKey]));
+  }
+
+  // Apply alt colors -- swap primary to near-black, keep secondary as-is so
+  // numbers/lettering stay light blue against the dark jersey.
+  for (const a of [me, opp]) {
+    if (a.altColors && FB.teams[a.side]) {
+      FB.teams[a.side].primaryColor = '#0a0a0a';
+    }
+  }
+
+  // Refresh the HUD logo letters in case team data changed.
+  const logoHome = document.getElementById('logoHome');
+  const logoAway = document.getElementById('logoAway');
+  if (logoHome && FB.teams.home) logoHome.textContent = FB.teams.home.initial || 'H';
+  if (logoAway && FB.teams.away) logoAway.textContent = FB.teams.away.initial || 'A';
+
+  FB.userTeam = me.side;
 }
 
 function pvpReceiveOpponentPlay(play, side) {
