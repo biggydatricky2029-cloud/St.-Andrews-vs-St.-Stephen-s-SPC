@@ -266,6 +266,9 @@
     const list = (FB.PLAYBOOK && FB.PLAYBOOK[side]) || [];
     if (!list.length) return [];
     opts = opts || {};
+    // `exclude` is a Set of play IDs that must NOT appear in the new hand —
+    // used by the shuffle button so two consecutive hands never overlap.
+    const excludeIds = opts.exclude instanceof Set ? opts.exclude : new Set();
 
     // Defense hand is biased to counter the AI's offensive call. Offense is
     // drawn uniformly so the user isn't railroaded into one style.
@@ -273,7 +276,12 @@
       ? (p) => scoreDefenseAgainst(p, opts.oppPlay, opts.ballOn)
       : (p) => 1 + Math.random() * 0.4;
 
-    const scored = list.map(p => ({ p, s: scorer(p) }));
+    let pool = list.filter(p => !excludeIds.has(p.id));
+    // If we'd be left with fewer than 3 plays, ignore the exclusion list so
+    // the picker always shows a full hand. (Only happens with tiny playbooks.)
+    if (pool.length < PP_HAND_SIZE) pool = list.slice();
+
+    const scored = pool.map(p => ({ p, s: scorer(p) }));
     scored.sort((a, b) => b.s - a.s);
 
     // Shuffle the top candidates so the user still gets variety.
@@ -341,7 +349,11 @@
       if (ppCallback) { const cb = ppCallback; ppCallback = null; cb(); }
     });
     document.getElementById('ppShuffle').addEventListener('click', () => {
-      ppHand[ppSide] = pickRandomHand(ppSide, handContext(ppSide));
+      // Force three brand-new plays — exclude the current hand so nothing
+      // the user just saw can repeat in the next batch.
+      const ctx = handContext(ppSide);
+      ctx.exclude = new Set((ppHand[ppSide] || []).map(p => p.id));
+      ppHand[ppSide] = pickRandomHand(ppSide, ctx);
       FB.selectedPlay[ppSide] = ppHand[ppSide][0] || FB.selectedPlay[ppSide];
       renderPlayList();
     });
