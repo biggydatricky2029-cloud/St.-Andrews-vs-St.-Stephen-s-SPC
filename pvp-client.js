@@ -570,9 +570,20 @@ function pvpHandleMessage(msg) {
         document.getElementById('lobby-my-ready').style.display = me.ready ? 'inline-block' : 'none';
       }
       if (opponent) {
+        const sameTeam = me && opponent.team === me.team;
+        const teamLabel = (t, mine) => {
+          const base = t === 'highlanders' ? 'Highlanders' : 'Spartans';
+          // When both players pick the same team, the SECOND joiner gets
+          // the dark uniform. The lobby doesn't know joinOrder, so we
+          // approximate: whoever is "you" in a same-team room is shown
+          // with their default uniform; the server is authoritative on
+          // which side is actually alt.
+          if (sameTeam) return base + (mine ? ' (white)' : ' (dark)');
+          return base;
+        };
         document.getElementById('lobby-opp-name').textContent = opponent.name;
-        document.getElementById('lobby-opp-team').textContent =
-          opponent.team === 'highlanders' ? 'Highlanders' : 'Spartans';
+        document.getElementById('lobby-opp-team').textContent = teamLabel(opponent.team, false);
+        document.getElementById('lobby-my-team').textContent  = teamLabel(me.team, true);
         document.getElementById('lobby-spinner').style.display = 'none';
         document.getElementById('lobby-opp-ready').style.display =
           opponent.ready ? 'inline-block' : 'none';
@@ -585,7 +596,9 @@ function pvpHandleMessage(msg) {
               ? 'Waiting for opponent to ready up...'
               : (opponent.ready
                   ? 'Opponent is ready -- ready up when set.'
-                  : 'Opponent joined! Ready up when set.'));
+                  : (sameTeam
+                      ? 'Same team! One side will wear dark uniforms. Ready up when set.'
+                      : 'Opponent joined! Ready up when set.')));
       } else {
         document.getElementById('lobby-opp-name').textContent = 'Waiting...';
         document.getElementById('lobby-opp-team').textContent = '--';
@@ -638,9 +651,8 @@ function pvpHandleMessage(msg) {
         alert('Room is full! Ask your friend for a new code.');
         showScreen('mode-select');
       }
-      if (msg.reason === 'team_taken') {
-        alert('That team is already taken. Please pick the other team.');
-      }
+      // 'team_taken' is intentionally not handled -- same-team play is
+      // allowed; the server gives the duplicate side alt (dark) jerseys.
       break;
     case 'rematch_start':
       pvpStartLocalGame(pvp.myTeam, pvp.isHost);
