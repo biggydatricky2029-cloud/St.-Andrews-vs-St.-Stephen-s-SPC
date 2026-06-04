@@ -123,12 +123,16 @@
     // POWER button is replaced by the swipe overlay -- always hidden.
     show('btnPower', false);
 
-    // Swipe UI appears only while the kicking team's human controls the kick.
+    // Swipe UI appears only while the kicking team's human controls the
+    // kick. Track visibility locally so we don't call showKickUI() on every
+    // frame -- that would reset the in-progress swipe via _resetFill().
     const userKicking = isKick && userOnOffense;
-    if (userKicking) {
-      if (window.showKickUI && !window.isKickUIVisible()) window.showKickUI();
-    } else {
-      if (window.hideKickUI && window.isKickUIVisible && window.isKickUIVisible()) window.hideKickUI();
+    if (userKicking && !FB._kickUIVisible) {
+      if (window.showKickUI) window.showKickUI();
+      FB._kickUIVisible = true;
+    } else if (!userKicking && FB._kickUIVisible) {
+      if (window.hideKickUI) window.hideKickUI();
+      FB._kickUIVisible = false;
     }
   };
 
