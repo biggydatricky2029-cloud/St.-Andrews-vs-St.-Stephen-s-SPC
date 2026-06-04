@@ -351,18 +351,27 @@ window.FB = window.FB || {};
   }
 
   function endZoneTexture(label, primary, secondary) {
-    const c = document.createElement('canvas'); c.width = 1024; c.height = 512;
+    // Canvas is tall (V axis is the long dimension) because once the
+    // texture wraps a flat PlaneGeometry(EZ, FIELD_WID), the canvas's V
+    // axis maps to the 53.3-unit sideline-to-sideline direction. Drawing
+    // the text rotated -90deg in this tall canvas puts the reading
+    // direction along V, so the end zone label reads horizontally across
+    // the field instead of vertically into it.
+    const c = document.createElement('canvas'); c.width = 512; c.height = 1024;
     const ctx = c.getContext('2d');
     ctx.fillStyle = primary; ctx.fillRect(0, 0, c.width, c.height);
-    // Subtle inner glow so the end zone doesn't read as a flat poster color.
-    const g = ctx.createRadialGradient(c.width / 2, c.height / 2, 10, c.width / 2, c.height / 2, c.width / 2);
+    const g = ctx.createRadialGradient(c.width / 2, c.height / 2, 10, c.width / 2, c.height / 2, c.height / 2);
     g.addColorStop(0, 'rgba(255,255,255,0.08)');
     g.addColorStop(1, 'rgba(0,0,0,0.25)');
     ctx.fillStyle = g; ctx.fillRect(0, 0, c.width, c.height);
     ctx.fillStyle = secondary;
     ctx.font = 'bold 160px system-ui, -apple-system, Helvetica, sans-serif';
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(label.toUpperCase(), c.width / 2, c.height / 2);
+    ctx.save();
+    ctx.translate(c.width / 2, c.height / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.fillText(label.toUpperCase(), 0, 0);
+    ctx.restore();
     const t = new THREE.CanvasTexture(c);
     t.encoding = THREE.sRGBEncoding;
     t.anisotropy = 8;
