@@ -74,20 +74,17 @@
     sprintBtn.addEventListener('mouseup', () => setSprint(false));
     sprintBtn.addEventListener('mouseleave', () => setSprint(false));
 
-    const pw = document.getElementById('btnPower');
-    const onPwDown = (e) => { e.preventDefault(); FB.input.powerHolding = true; FB.input.power = 0; };
-    const onPwUp = (e) => {
-      e.preventDefault();
-      if (FB.input.powerHolding) {
-        FB.input.powerHolding = false;
-        if (FB.onKickRelease) FB.onKickRelease(FB.input.power);
-        FB.input.power = 0;
-      }
-    };
-    pw.addEventListener('touchstart', onPwDown, { passive: false });
-    pw.addEventListener('touchend', onPwUp, { passive: false });
-    pw.addEventListener('mousedown', onPwDown);
-    pw.addEventListener('mouseup', onPwUp);
+    // Swipe-based kick input replaces the POWER button. The button is left
+    // permanently hidden by updateButtonStates; we keep the old held-meter
+    // input fields in case anything else reads them, but they're no longer
+    // driven by the user.
+    if (typeof window.initKickSwipeUI === 'function') {
+      window.initKickSwipeUI(({ power, direction }) => {
+        if (!FB.onKickRelease) return;
+        FB.input.joyX = Math.max(-1, Math.min(1, direction));
+        FB.onKickRelease(power * 100);
+      });
+    }
 
     window.addEventListener('keydown', (e) => {
       if (e.code === 'KeyW') FB.input.joyY = -1;
@@ -123,7 +120,16 @@
     show('btnDive', isPlay && userOnOffense && FB.ballCarrier && FB.ballCarrier.team === s.possession);
     show('btnSwitch', isPlay && !userOnOffense);
     show('btnSprint', isPlay);
-    show('btnPower', isKick);
+    // POWER button is replaced by the swipe overlay -- always hidden.
+    show('btnPower', false);
+
+    // Swipe UI appears only while the kicking team's human controls the kick.
+    const userKicking = isKick && userOnOffense;
+    if (userKicking) {
+      if (window.showKickUI && !window.isKickUIVisible()) window.showKickUI();
+    } else {
+      if (window.hideKickUI && window.isKickUIVisible && window.isKickUIVisible()) window.hideKickUI();
+    }
   };
 
 })(window.FB);
