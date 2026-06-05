@@ -101,9 +101,11 @@
   // Auto-release the power meter when the AI is the kicking team.
   function maybeAutoKick() {
     if (FB.state.possession === FB.userTeam) return;
-    // Kickoffs: moderate power so the ball doesn't sail past the field.
+    // Kickoffs: 80-100% so the AI's kickoff still travels a realistic
+    // distance after the kickoff base was tuned to land full-power kicks
+    // around the opposing 15 (about 50 yards) instead of past the end zone.
     const power = FB.specialMode === 'kickoff'
-      ? 50 + Math.random() * 18
+      ? 80 + Math.random() * 20
       : 55 + Math.random() * 22;
     setTimeout(() => FB.onKickRelease(power), 900);
   }
@@ -115,8 +117,10 @@
     const dir = FB.forwardDir(FB.state.possession);
     const aimZ = FB.input.joyX * 8;    // steer with joystick
     const kickerRating = FB.kickMeterFrom.rating || 60;
-    // Tuned so kickoffs land around the opposing 20-40 instead of past the end zone.
-    const base = FB.specialMode === 'kickoff' ? 20 : FB.specialMode === 'punt' ? 17 : 21;
+    // Kickoff base tuned so full-power kicks travel about 50 yards (ball from
+    // own 35 lands near the opposing 15). Solving dist ~= 0.143*v^2 = 50 gives
+    // v ~= 18.7; with a rating-70 multiplier of ~1.10, base 17 hits the mark.
+    const base = FB.specialMode === 'kickoff' ? 17 : FB.specialMode === 'punt' ? 17 : 21;
     const maxV = base * (0.78 + kickerRating / 220);
     const v = maxV * power;
     const windZ = (FB.state.quarter === 2 || FB.state.quarter === 4) ? (Math.random() - 0.5) * 1.5 : 0;

@@ -86,6 +86,21 @@
       });
     }
 
+    // Force the swipe UI to re-show at the start of every new kick setup.
+    // Without this, the _kickUIVisible flag stays true across an XP -> kickoff
+    // (or FG -> kickoff) transition because the phase never leaves 'kick'
+    // between the two -- so updateButtonStates skips the re-show.
+    ['setupKickoff', 'setupPunt', 'setupFG'].forEach((name) => {
+      const orig = FB[name];
+      if (!orig || orig.__kickUIReset) return;
+      const wrapped = function () {
+        FB._kickUIVisible = false;
+        return orig.apply(this, arguments);
+      };
+      wrapped.__kickUIReset = true;
+      FB[name] = wrapped;
+    });
+
     window.addEventListener('keydown', (e) => {
       if (e.code === 'KeyW') FB.input.joyY = -1;
       if (e.code === 'KeyS') FB.input.joyY = 1;
