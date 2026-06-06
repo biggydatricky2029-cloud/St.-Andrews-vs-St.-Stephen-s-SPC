@@ -235,6 +235,17 @@
       const next = () => FB.setupPlay('pass');
       if (FB.startRefSpot) FB.startRefSpot(from, to, next);
       else setTimeout(next, 700);
+      return;
+    }
+    // Pass that wasn't caught (defensed, overthrown, dropped) lands on the
+    // turf. Mark the ball dead and let endPlay handle advance + reset --
+    // without this the engine would stall with no carrier and no kick.
+    if (FB.ballState.kind === 'pass' && FB.state.phase === 'play') {
+      FB.ballState.inAir = false;
+      FB.ballState.targetPlayer = null;
+      FB.ballState.kind = null;
+      FB.ballCarrier = null;
+      if (FB.endPlay) FB.endPlay({ reason: 'incomplete' });
     }
   };
 

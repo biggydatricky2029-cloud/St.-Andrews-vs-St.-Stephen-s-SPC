@@ -41,7 +41,8 @@
     const dir = FB.forwardDir(bc.team);
     let dx, dz;
     // Human controls the carrier only when the user's team has possession.
-    if (bc.team === FB.state.possession && bc.team === FB.userTeam && FB.state.phase === 'play') {
+    const isHumanCarrier = bc.team === FB.state.possession && bc.team === FB.userTeam && FB.state.phase === 'play';
+    if (isHumanCarrier) {
       dx = FB.input.joyY * -1;
       dz = FB.input.joyX;
       if (bc.team === 'away') { dx = -dx; }
@@ -57,7 +58,9 @@
     }
 
     const mag = Math.hypot(dx, dz);
-    const targetSpeed = bc.baseSpeed * (FB.input.sprint && bc.stamina > 0 ? 1.35 : 1.0);
+    // 10% global handicap on the human-controlled player at every difficulty.
+    const humanSpeedMul = isHumanCarrier ? 0.9 : 1.0;
+    const targetSpeed = bc.baseSpeed * (FB.input.sprint && bc.stamina > 0 ? 1.35 : 1.0) * humanSpeedMul;
     if (mag > 0.05) {
       const nx = dx / mag, nz = dz / mag;
       bc.vel.x += (nx * targetSpeed - bc.vel.x) * Math.min(1, dt * bc.accel / targetSpeed);
@@ -73,8 +76,9 @@
     clampField(bc.mesh.position);
 
     // Crossing the opponent's goal line ends the play immediately (TD).
-    // Otherwise a 2-pt conversion run would continue until a tackle.
-    if (FB.state.phase === 'play' && FB.specialMode !== 'kickoff') {
+    // Applies on standard plays, 2-pt tries, AND kickoff returns -- a
+    // returner who reaches the end zone no longer has to be tackled.
+    if (FB.state.phase === 'play') {
       const yardNow = FB.yardFromBallX(bc.mesh.position.x, bc.team);
       if (yardNow >= 100) {
         if (FB.endPlay) FB.endPlay({ reason: 'td' });
@@ -181,7 +185,8 @@
         let dx = FB.input.joyY * -1, dz = FB.input.joyX;
         if (ent.team === 'away') dx = -dx;
         const mag = Math.hypot(dx, dz);
-        const sp = ent.baseSpeed * (FB.input.sprint && ent.stamina > 0 ? 1.3 : 1.0);
+        // 10% global handicap on the human-controlled player.
+        const sp = ent.baseSpeed * (FB.input.sprint && ent.stamina > 0 ? 1.3 : 1.0) * 0.9;
         if (mag > 0.05) {
           const nx = dx / mag, nz = dz / mag;
           ent.vel.x += (nx * sp - ent.vel.x) * Math.min(1, dt * ent.accel / sp);

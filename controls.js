@@ -128,8 +128,12 @@
     const isPlay = s.phase === 'play';
     const isKick = s.phase === 'kick';
     const userOnOffense = s.possession === FB.userTeam;
-    show('btnSnap', isPre && s.playType !== 'kickoff' && s.playType !== 'fg' && s.playType !== 'punt');
-    show('btnHandoff', isPre && userOnOffense && (s.playType === 'run' || s.playType === 'pass'));
+    // The SNAP / HAND buttons are only valid for regular scrimmage plays.
+    // Kept explicit here so neither button can leak into a kickoff, FG, XP,
+    // punt, or kickoff-return sequence.
+    const isScrimmage = s.playType === 'run' || s.playType === 'pass';
+    show('btnSnap', isPre && !isKick && isScrimmage);
+    show('btnHandoff', isPre && !isKick && userOnOffense && isScrimmage);
     show('btnPass', isPlay && userOnOffense && FB.ballCarrier === FB.qb);
     show('btnJuke', isPlay && userOnOffense && FB.ballCarrier && FB.ballCarrier.team === s.possession);
     show('btnDive', isPlay && userOnOffense && FB.ballCarrier && FB.ballCarrier.team === s.possession);
