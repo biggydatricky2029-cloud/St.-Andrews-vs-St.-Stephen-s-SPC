@@ -138,7 +138,7 @@
     show('btnJuke', isPlay && userOnOffense && FB.ballCarrier && FB.ballCarrier.team === s.possession);
     show('btnDive', isPlay && userOnOffense && FB.ballCarrier && FB.ballCarrier.team === s.possession);
     show('btnSwitch', isPlay && !userOnOffense);
-    show('btnSprint', isPlay);
+    show('btnSprint', false);
     // POWER button is replaced by the swipe overlay -- always hidden.
     show('btnPower', false);
 
