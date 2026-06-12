@@ -16,14 +16,17 @@
   );
 
   window.GRAPHICS_CONFIG = {
+    isMobile,
     quality: {
       mode: 'AUTO',                       // 'AUTO' | 'LOW' | 'MEDIUM' | 'HIGH'
       current: isMobile ? 'MEDIUM' : 'HIGH', // starting guess, AUTO may lower it
-      // Auto-benchmark: average frame ms measured over benchFrames frames
-      // (after a warmup) — above downgradeMs drops one tier.
-      benchWarmupFrames: 90,
-      benchFrames: 60,
-      downgradeMs: 26,
+      // Auto-benchmark: average rAF frame delta (ms) measured over
+      // benchFrames samples after the warmup — above downgradeMs drops one
+      // tier. 19ms is ~52fps; spikes above 17ms (60fps) on a phone that
+      // can't recover deserve the downgrade.
+      benchWarmupFrames: 45,
+      benchFrames: 30,
+      downgradeMs: 19,
     },
 
     renderer: {
@@ -44,8 +47,11 @@
         intensity: 1.3,                   // ×4 overlapping spots under ACES
         angle: 0.62,                      // wide enough to cover the field from a corner
         penumbra: 0.3,
-        shadowMapSize: { HIGH: 2048, MEDIUM: 1536, LOW: 1024 },
-        shadowCasters: { HIGH: 2, MEDIUM: 1, LOW: 1 },
+        // Shadow maps are quality-tiered. We cap casters at 1 across all
+        // tiers — a 2nd shadow render costs ~3ms on the verified GPU and a
+        // single crossed shadow already sells the broadcast look.
+        shadowMapSize: { HIGH: 2048, MEDIUM: 1024, LOW: 512 },
+        shadowCasters: { HIGH: 1, MEDIUM: 1, LOW: 1 },
         shadowNear: 25, shadowFar: 210, shadowBias: -0.0004, shadowNormalBias: 0.03,
       },
       hemisphere: { sky: 0x1a1a3e, ground: 0x3d6b33, intensity: 0.4 },
@@ -69,7 +75,20 @@
     },
 
     // ---- Phase 1: player materials (MeshPhysicalMaterial params) ----
+    // Per-tier `effects` gates the two most expensive physical features:
+    //   • transmission > 0 on any material triggers a full opaque-pass
+    //     scene capture every frame in r128 (≈10.5ms on the verified GPU
+    //     during a mobile-sized viewport) — so only HIGH gets the real
+    //     refracted-tint visor; lower tiers use a cheap transparent visor
+    //     that looks nearly identical at gameplay distances.
+    //   • clearcoat adds a 2nd specular lobe (~2ms across 44 helmets).
+    //     HIGH keeps the painted-polycarbonate sheen; lower tiers drop it.
     player: {
+      effects: {
+        HIGH:   { clearcoat: true, transmission: true },
+        MEDIUM: { clearcoat: false, transmission: false },
+        LOW:    { clearcoat: false, transmission: false },
+      },
       jersey:   { roughness: 0.88, metalness: 0.0 },
       helmet:   { roughness: 0.12, metalness: 0.08, clearcoat: 1.0, clearcoatRoughness: 0.1 },
       facemask: { roughness: 0.35, metalness: 0.95, color: 0x52525a },

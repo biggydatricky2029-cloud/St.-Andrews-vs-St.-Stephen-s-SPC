@@ -224,6 +224,20 @@
         if (s.castShadow && ++casters > 1) s.castShadow = false;
       }
     }
+    // Strip transmission + clearcoat from every existing player material
+    // when we drop below HIGH. Transmission is the single biggest hidden
+    // cost on r128 (an extra full-scene render per frame) — killing it
+    // mid-game gets us back to 60fps without rebuilding meshes.
+    if (next !== 'HIGH') {
+      FB.scene.traverse((o) => {
+        const mats = Array.isArray(o.material) ? o.material : (o.material ? [o.material] : []);
+        for (const m of mats) {
+          if (!m) continue;
+          if (m.transmission) { m.transmission = 0; m.transparent = !!m.opacity && m.opacity < 1; m.needsUpdate = true; }
+          if (m.clearcoat) { m.clearcoat = 0; m.needsUpdate = true; }
+        }
+      });
+    }
     if (next === 'LOW' && FB.renderer) {
       FB.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
       FB.renderer.setSize(window.innerWidth, window.innerHeight);

@@ -236,6 +236,7 @@
 
       const weave = wovenJerseyNormal();
       const weaveScale = new THREE.Vector2(0.4, 0.4);
+      const fx = P.effects[window.GRAPHICS_CONFIG.tier()] || P.effects.MEDIUM;
 
       this.jersey = new THREE.MeshPhysicalMaterial({
         color: jerseyColor, roughness: P.jersey.roughness, metalness: P.jersey.metalness,
@@ -263,26 +264,43 @@
         roughness: P.pants.roughness, metalness: 0.0,
       });
 
-      // Hard shiny painted polycarbonate.
+      // Hard shiny painted polycarbonate. Clearcoat costs ~2ms across 44
+      // helmets on mobile GPUs; MEDIUM/LOW drop it and lean on the env-map
+      // reflection instead, which reads almost identical at gameplay
+      // distance because the helmet is small on screen.
       this.helmet = new THREE.MeshPhysicalMaterial({
         color: primary,
         roughness: P.helmet.roughness, metalness: P.helmet.metalness,
-        clearcoat: P.helmet.clearcoat, clearcoatRoughness: P.helmet.clearcoatRoughness,
+        clearcoat: fx.clearcoat ? P.helmet.clearcoat : 0,
+        clearcoatRoughness: P.helmet.clearcoatRoughness,
         envMapIntensity: 1.1,
       });
-      // Brushed steel cage.
       this.facemask = new THREE.MeshPhysicalMaterial({
         color: P.facemask.color, roughness: P.facemask.roughness, metalness: P.facemask.metalness,
       });
-      // Dark tinted polycarbonate visor.
-      this.visor = new THREE.MeshPhysicalMaterial({
-        color: P.visor.color,
-        roughness: P.visor.roughness, metalness: P.visor.metalness,
-        transmission: P.visor.transmission,
-        transparent: true, opacity: P.visor.opacity,
-        side: THREE.DoubleSide,
-        envMapIntensity: 1.4,
-      });
+      // Visor: HIGH gets the real transmission-refracted tint;
+      // MEDIUM/LOW use a plain transparent dark plastic, which costs nothing
+      // extra. Transmission > 0 makes r128 do a full extra scene render
+      // every frame (the opaque-pass texture for refraction), so this is
+      // the single biggest mobile perf win.
+      if (fx.transmission) {
+        this.visor = new THREE.MeshPhysicalMaterial({
+          color: P.visor.color,
+          roughness: P.visor.roughness, metalness: P.visor.metalness,
+          transmission: P.visor.transmission,
+          transparent: true, opacity: P.visor.opacity,
+          side: THREE.DoubleSide,
+          envMapIntensity: 1.4,
+        });
+      } else {
+        this.visor = new THREE.MeshStandardMaterial({
+          color: P.visor.color,
+          roughness: P.visor.roughness + 0.05, metalness: 0.4,
+          transparent: true, opacity: P.visor.opacity,
+          side: THREE.DoubleSide,
+          envMapIntensity: 1.4,
+        });
+      }
 
       // Skin with a faint warm sheen as an SSS stand-in (r128's
       // MeshPhysicalMaterial sheen is a color slot).
