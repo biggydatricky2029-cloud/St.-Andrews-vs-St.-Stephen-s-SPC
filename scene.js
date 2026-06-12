@@ -99,9 +99,12 @@ window.FB = window.FB || {};
 
   // ---- Three.js ----
   FB.initThree = function () {
+    const GC = window.GRAPHICS_CONFIG;
     const canvas = document.getElementById('gl');
-    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    // AA off: FXAA in the post chain handles edges far cheaper than MSAA on
+    // mobile GPUs (see postfx.js).
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, GC.renderer.maxPixelRatio));
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -109,40 +112,135 @@ window.FB = window.FB || {};
     // (r128 uses outputEncoding/sRGBEncoding — equivalent to outputColorSpace in newer releases.)
     renderer.outputEncoding = THREE.sRGBEncoding;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.05;
-    renderer.setClearColor(0x0a1020, 1);
+    renderer.toneMappingExposure = GC.renderer.exposure;
+    renderer.setClearColor(GC.renderer.clearColor, 1);
 
     const scene = new THREE.Scene();
-    scene.fog = new THREE.Fog(0x7fa7cf, 110, 320);
-    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.5, 500);
+    scene.fog = new THREE.Fog(GC.environment.fog.color, GC.environment.fog.near, GC.environment.fog.far);
+    const camera = new THREE.PerspectiveCamera(GC.camera.fovBase, window.innerWidth / window.innerHeight, 0.5, 500);
     camera.position.set(-70, 18, 0); camera.lookAt(0, 2, 0);
-
-    const hemi = new THREE.HemisphereLight(0xcde4ff, 0x30502e, 0.85);
-    scene.add(hemi);
-    const sun = new THREE.DirectionalLight(0xfff0d4, 1.25);
-    sun.position.set(-60, 90, 40); sun.castShadow = true;
-    sun.shadow.mapSize.set(2048, 2048);
-    sun.shadow.camera.left = -90; sun.shadow.camera.right = 90;
-    sun.shadow.camera.top = 90;  sun.shadow.camera.bottom = -90;
-    sun.shadow.camera.near = 1;  sun.shadow.camera.far = 220;
-    sun.shadow.bias = -0.0003;
-    sun.shadow.normalBias = 0.02;
-    scene.add(sun);
 
     FB.scene = scene; FB.camera = camera; FB.renderer = renderer;
     FB.clock = new THREE.Clock();
     FB.playCam = { shake: 0 };
 
+    buildBroadcastLightRig();
     createSky();
     createField();
     createStadium();
+    buildEnvironmentIBL();
 
-    // ---- Post-processing (Pass 5): bloom + vignette ----
-    buildComposer();
+    // ---- Post-processing chain (postfx.js) ----
+    if (FB.buildComposer) FB.buildComposer();
 
     window.addEventListener('resize', FB.onResize);
     window.addEventListener('orientationchange', FB.onResize);
   };
+
+  // ============================================================
+  //  PHASE 3 — Broadcast stadium light rig
+  //  4 warm corner SpotLights (sources sit exactly on the visible
+  //  pole clusters), a night-sky hemisphere for bounce, a faint
+  //  ambient floor so shadows never crush to black, and one
+  //  shadowless fill that follows the camera (kept aimed by
+  //  camera-broadcast.js) so player faces always read on screen.
+  //  Shadow-casting spot count is quality-tiered: every extra
+  //  caster is a full scene depth render per frame.
+  // ============================================================
+  function buildBroadcastLightRig() {
+    const GC = window.GRAPHICS_CONFIG;
+    const L = GC.lights;
+    const tier = GC.tier();
+    const shadowCasters = L.spot.shadowCasters[tier] || 1;
+    const mapSize = L.spot.shadowMapSize[tier] || 1024;
+
+    FB.stadiumSpots = [];
+    L.cornerXZ.forEach((c, i) => {
+      const spot = new THREE.SpotLight(L.spot.color, L.spot.intensity);
+      spot.position.set(c.x, L.poleHeight, c.z);
+      spot.angle = L.spot.angle;
+      spot.penumbra = L.spot.penumbra;
+      spot.decay = 0;               // stadium floods: no distance falloff
+      spot.target.position.set(c.x * 0.15, 0, c.z * 0.15); // aim past center for even coverage
+      FB.scene.add(spot.target);
+      // Opposite corners cast shadows first so the two shadow directions
+      // cross — the classic multi-shadow stadium look.
+      if ((i === 0 || i === 3) && FB.stadiumSpots.filter(s => s.castShadow).length < shadowCasters) {
+        spot.castShadow = true;
+        spot.shadow.mapSize.set(mapSize, mapSize);
+        spot.shadow.camera.near = L.spot.shadowNear;
+        spot.shadow.camera.far = L.spot.shadowFar;
+        spot.shadow.bias = L.spot.shadowBias;
+        spot.shadow.normalBias = L.spot.shadowNormalBias;
+      }
+      FB.scene.add(spot);
+      FB.stadiumSpots.push(spot);
+    });
+
+    const hemi = new THREE.HemisphereLight(L.hemisphere.sky, L.hemisphere.ground, L.hemisphere.intensity);
+    FB.scene.add(hemi);
+
+    const ambient = new THREE.AmbientLight(L.ambient.color, L.ambient.intensity);
+    FB.scene.add(ambient);
+
+    // Camera-following fill — position is synced every frame by the
+    // broadcast camera so front-facing geometry is never silhouetted.
+    const fill = new THREE.DirectionalLight(L.fill.color, L.fill.intensity);
+    fill.castShadow = false;
+    FB.scene.add(fill);
+    FB.scene.add(fill.target);
+    FB.fillLight = fill;
+  }
+
+  // ============================================================
+  //  PHASE 5 — Image-based lighting
+  //  A synthetic night-stadium cubemap (dark sky above, warm
+  //  floodlit horizon band, green turf bounce below) becomes
+  //  scene.environment, giving helmets/visors believable
+  //  reflections on every PBR material.
+  //
+  //  NOTE: a live PMREMGenerator.fromScene capture was tried first
+  //  and produced NaN samples on some GPU stacks (verified under
+  //  SwiftShader), which blackens every MeshStandard/Physical
+  //  material in r128. The procedural cubemap is built on plain
+  //  canvases — no render targets — so it cannot fail that way.
+  // ============================================================
+  function buildEnvironmentIBL() {
+    const GC = window.GRAPHICS_CONFIG;
+    if (!GC.environment.iblEnabled) return;
+    try {
+      const size = 32;
+      const face = (paint) => {
+        const c = document.createElement('canvas'); c.width = c.height = size;
+        paint(c.getContext('2d'));
+        return c;
+      };
+      const skyTop = '#0a1228';
+      const horizonWarm = '#6a5a3a';   // floodlight glow ring
+      const grass = '#1d3a1f';
+      const sideFace = () => face((ctx) => {
+        const g = ctx.createLinearGradient(0, 0, 0, size);
+        g.addColorStop(0, skyTop);
+        g.addColorStop(0.55, '#2a2c3a');
+        g.addColorStop(0.72, horizonWarm);
+        g.addColorStop(0.8, '#3a4030');
+        g.addColorStop(1, grass);
+        ctx.fillStyle = g; ctx.fillRect(0, 0, size, size);
+      });
+      // Order: +x, -x, +y (sky), -y (turf), +z, -z.
+      const cube = new THREE.CubeTexture([
+        sideFace(), sideFace(),
+        face((ctx) => { ctx.fillStyle = skyTop; ctx.fillRect(0, 0, size, size); }),
+        face((ctx) => { ctx.fillStyle = grass; ctx.fillRect(0, 0, size, size); }),
+        sideFace(), sideFace(),
+      ]);
+      cube.needsUpdate = true;
+      cube.encoding = THREE.sRGBEncoding;
+      FB.scene.environment = cube;
+    } catch (e) {
+      // IBL is purely cosmetic — never let it break startup.
+    }
+  }
 
   FB.onResize = function () {
     FB.renderer.setSize(window.innerWidth, window.innerHeight);
@@ -151,128 +249,104 @@ window.FB = window.FB || {};
     if (FB.composer) FB.composer.setSize(window.innerWidth, window.innerHeight);
   };
 
-  // Build EffectComposer if the post-processing modules loaded. Any missing
-  // class falls through to the plain renderer.render path in logic-loop.js.
-  function buildComposer() {
-    try {
-      if (!THREE.EffectComposer || !THREE.RenderPass || !THREE.ShaderPass ||
-          !THREE.UnrealBloomPass) {
-        return;
-      }
-      const composer = new THREE.EffectComposer(FB.renderer);
-      composer.setSize(window.innerWidth, window.innerHeight);
-      composer.addPass(new THREE.RenderPass(FB.scene, FB.camera));
-
-      // Subtle bloom so stadium lights, jumbotron, and white lines pop.
-      const bloom = new THREE.UnrealBloomPass(
-        new THREE.Vector2(window.innerWidth, window.innerHeight),
-        0.30,   // strength
-        0.40,   // radius
-        0.90    // threshold (only very bright pixels bloom)
-      );
-      composer.addPass(bloom);
-
-      // Mild broadcast-style vignette.
-      const vignetteShader = {
-        uniforms: {
-          tDiffuse: { value: null },
-          vignetteStrength: { value: 0.28 },
-          vignetteInner:    { value: 0.45 },
-          vignetteOuter:    { value: 0.95 },
-        },
-        vertexShader: [
-          'varying vec2 vUv;',
-          'void main() {',
-          '  vUv = uv;',
-          '  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);',
-          '}',
-        ].join('\n'),
-        fragmentShader: [
-          'uniform sampler2D tDiffuse;',
-          'uniform float vignetteStrength;',
-          'uniform float vignetteInner;',
-          'uniform float vignetteOuter;',
-          'varying vec2 vUv;',
-          'void main() {',
-          '  vec4 c = texture2D(tDiffuse, vUv);',
-          '  float d = distance(vUv, vec2(0.5));',
-          '  float v = smoothstep(vignetteInner, vignetteOuter, d);',
-          '  c.rgb *= mix(1.0, 1.0 - vignetteStrength, v);',
-          '  gl_FragColor = c;',
-          '}',
-        ].join('\n'),
-      };
-      composer.addPass(new THREE.ShaderPass(vignetteShader));
-
-      // Final sRGB gamma correction — EffectComposer works in linear space;
-      // without this pass the final image reads washed under ACES.
-      if (THREE.GammaCorrectionShader) {
-        const gamma = new THREE.ShaderPass(THREE.GammaCorrectionShader);
-        composer.addPass(gamma);
-      }
-
-      FB.composer = composer;
-    } catch (e) {
-      // Never let post-processing errors take the game down.
-      FB.composer = null;
-    }
-  }
-
+  // Night-game sky: the renderer clear color IS the sky (deep navy-black),
+  // dressed with a sparse star field. A geometric sky dome was tried in two
+  // implementations (gradient ShaderMaterial, vertex-colored basic) and
+  // both read several stops too bright on real pipelines, washing out the
+  // night-game contrast that sells the broadcast look — the flat clear
+  // color + stars is darker, cheaper, and looks correct.
   function createSky() {
-    const geom = new THREE.SphereGeometry(300, 32, 16);
-    const mat = new THREE.ShaderMaterial({
-      side: THREE.BackSide,
-      uniforms: { topColor: { value: new THREE.Color(0x1a3e75) }, bottomColor: { value: new THREE.Color(0xa9d0ee) } },
-      vertexShader: 'varying vec3 vW; void main(){ vW=normalize(position); gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }',
-      fragmentShader: 'varying vec3 vW; uniform vec3 topColor; uniform vec3 bottomColor; void main(){ float t=max(vW.y,0.); gl_FragColor=vec4(mix(bottomColor,topColor,pow(t,0.6)),1.); }'
-    });
-    FB.scene.add(new THREE.Mesh(geom, mat));
+    const GC = window.GRAPHICS_CONFIG;
+
+    // Stars: one Points cloud on the upper dome, additive so they twinkle
+    // through the bloom pass without costing draw calls.
+    const n = GC.environment.stars;
+    const starPos = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) {
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.acos(0.15 + Math.random() * 0.8); // keep above horizon
+      const r = 290;
+      starPos[i * 3 + 0] = r * Math.sin(phi) * Math.cos(theta);
+      starPos[i * 3 + 1] = r * Math.cos(phi);
+      starPos[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
+    }
+    const starGeo = new THREE.BufferGeometry();
+    starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+    const stars = new THREE.Points(starGeo, new THREE.PointsMaterial({
+      color: 0xcdd8ff, size: 1.1, sizeAttenuation: false,
+      transparent: true, opacity: 0.7, fog: false, depthWrite: false,
+    }));
+    FB.scene.add(stars);
   }
 
-  // ---- Turf (PBR): baked albedo + tiling grass-blade normal map ----
+  // ============================================================
+  //  PHASE 2 — Photoreal turf
+  //  Baked full-field albedo (mow stripes, dirt wear, blade noise),
+  //  a dual-scale procedural normal map (large undulation + blade
+  //  micro-detail blended in one bake), a noise roughness map so
+  //  patches catch the floods unevenly, a wetness control, a field
+  //  crown, and a vertex-shader wind micro-sway injected via
+  //  onBeforeCompile (see createField).
+  // ============================================================
 
-  // Full-field albedo at ~2048×1024. Mowing stripes at 5-yard bands, darker
-  // wear along the hash rows and between the tackles, plus per-pixel noise
-  // so the ground reads as grass rather than a flat plane.
+  // NFL crown: the field is highest at its center line and falls off
+  // parabolically toward the sidelines. Everything that needs to sit on the
+  // grass (players, ref, markings) queries this.
+  FB.fieldCrownY = function (z) {
+    const half = FB.const.FIELD_WID / 2;
+    const crown = window.GRAPHICS_CONFIG.field.crownHeight;
+    const t = Math.min(1, Math.abs(z) / half);
+    return crown * (1 - t * t);
+  };
+
+  // Full-field albedo at 2048×1024. Mowing stripes alternate the two spec
+  // greens every 5 yards; dirt is blended in along the hash rows, between
+  // the tackles, and at the end-zone fringes where cleats chew the grass.
   function mowedTurfTexture() {
     const { FIELD_LEN, FIELD_WID, EZ, HASH_Z } = FB.const;
+    const GC = window.GRAPHICS_CONFIG.field;
     const w = 2048, h = 1024;
     const c = document.createElement('canvas'); c.width = w; c.height = h;
     const ctx = c.getContext('2d');
-
-    // Base turf — vertical gradient to break up the flat look.
-    const base = ctx.createLinearGradient(0, 0, 0, h);
-    base.addColorStop(0, '#2e6d38');
-    base.addColorStop(0.5, '#2b6a35');
-    base.addColorStop(1, '#286131');
-    ctx.fillStyle = base;
-    ctx.fillRect(0, 0, w, h);
 
     // Mowing stripes every 5 yards across the full field length.
     const numStripes = FIELD_LEN / 5;           // 24
     const stripeW = w / numStripes;
     for (let i = 0; i < numStripes; i++) {
-      ctx.fillStyle = i % 2 === 0
-        ? 'rgba(255,255,255,0.055)'             // lighter band
-        : 'rgba(0,0,0,0.12)';                   // darker band
+      ctx.fillStyle = i % 2 === 0 ? GC.stripeLight : GC.stripeDark;
       ctx.fillRect(i * stripeW, 0, stripeW + 1, h);
     }
 
-    // Worn paths along each hash row (between-the-tackles traffic).
+    // Dirt wear: hash rows, the high-traffic middle, and a fringe just
+    // outside each goal line where every series stacks bodies.
     const yAt = (z) => ((z + FIELD_WID / 2) / FIELD_WID) * h;
     const ezPx = (EZ / FIELD_LEN) * w;
-    const wearBand = (zCenter, zHalf, alpha) => {
-      ctx.fillStyle = 'rgba(20,40,22,' + alpha + ')';
+    ctx.globalAlpha = 1;
+    const dirtBand = (zCenter, zHalf, alpha) => {
+      const grad = ctx.createLinearGradient(0, yAt(zCenter - zHalf), 0, yAt(zCenter + zHalf));
+      grad.addColorStop(0, 'rgba(107,66,38,0)');
+      grad.addColorStop(0.5, 'rgba(107,66,38,' + alpha + ')');
+      grad.addColorStop(1, 'rgba(107,66,38,0)');
+      ctx.fillStyle = grad;
       ctx.fillRect(ezPx, yAt(zCenter - zHalf), w - 2 * ezPx, (2 * zHalf / FIELD_WID) * h);
     };
-    wearBand(HASH_Z, 1.3, 0.16);
-    wearBand(-HASH_Z, 1.3, 0.16);
-    wearBand(0, 2.1, 0.09);
+    dirtBand(HASH_Z, 1.6, 0.22);
+    dirtBand(-HASH_Z, 1.6, 0.22);
+    dirtBand(0, 2.4, 0.30);
+    // Goal-line wear patches.
+    for (const gx of [ezPx, w - ezPx]) {
+      const grad = ctx.createLinearGradient(gx - 40, 0, gx + 40, 0);
+      grad.addColorStop(0, 'rgba(107,66,38,0)');
+      grad.addColorStop(0.5, 'rgba(107,66,38,0.20)');
+      grad.addColorStop(1, 'rgba(107,66,38,0)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(gx - 40, h * 0.18, 80, h * 0.64);
+    }
 
-    // Darker "logo" shadow near the 50 (fakes compacted center field).
+    // Compacted center-field shadow near the 50.
     const cx = w / 2, cy = h / 2;
     const rg = ctx.createRadialGradient(cx, cy, 0, cx, cy, h * 0.28);
-    rg.addColorStop(0, 'rgba(0,0,0,0.10)');
+    rg.addColorStop(0, 'rgba(60,40,22,0.12)');
     rg.addColorStop(1, 'rgba(0,0,0,0.0)');
     ctx.fillStyle = rg; ctx.fillRect(0, 0, w, h);
 
@@ -283,7 +357,7 @@ window.FB = window.FB || {};
       if (Math.random() < 0.55) {
         ctx.fillStyle = 'rgba(0,0,0,' + (Math.random() * 0.14) + ')';
       } else {
-        ctx.fillStyle = 'rgba(220,240,190,' + (Math.random() * 0.10) + ')';
+        ctx.fillStyle = 'rgba(225,245,195,' + (Math.random() * 0.10) + ')';
       }
       ctx.fillRect(x, y, 1, 1);
     }
@@ -295,35 +369,50 @@ window.FB = window.FB || {};
     return tex;
   }
 
-  // Tiling grass-blade normal map derived from a smoothed noise heightfield.
+  // Tiling dual-scale grass normal map. Two Perlin-style smoothed noise
+  // fields are sampled at different frequencies and blended in one bake —
+  // the coarse layer reads as turf undulation, the fine layer as individual
+  // blade micro-detail — which matches a two-sample shader blend without
+  // any custom fragment code.
   function turfNormalMap() {
     const size = 256;
     const c = document.createElement('canvas'); c.width = size; c.height = size;
     const ctx = c.getContext('2d');
-    // Step 1: random height
-    const heightA = new Float32Array(size * size);
-    for (let i = 0; i < heightA.length; i++) heightA[i] = Math.random();
-    // Step 2: two passes of 3x3 box blur (wrapping) so the gradient isn't
-    // per-pixel noise.
-    const blur = (src) => {
-      const out = new Float32Array(src.length);
-      for (let y = 0; y < size; y++) {
-        for (let x = 0; x < size; x++) {
-          let s = 0;
-          for (let dy = -1; dy <= 1; dy++) {
-            for (let dx = -1; dx <= 1; dx++) {
-              const xx = (x + dx + size) % size;
-              const yy = (y + dy + size) % size;
-              s += src[yy * size + xx];
-            }
-          }
-          out[y * size + x] = s / 9;
-        }
-      }
-      return out;
+    const noise = () => {
+      const a = new Float32Array(size * size);
+      for (let i = 0; i < a.length; i++) a[i] = Math.random();
+      return a;
     };
-    const height = blur(blur(heightA));
-    // Step 3: Sobel-ish gradient → normal.
+    // Wrapping 3×3 box blur — repeated passes turn white noise into
+    // smooth Perlin-like undulation.
+    const blur = (src, passes) => {
+      let cur = src;
+      for (let p = 0; p < passes; p++) {
+        const out = new Float32Array(cur.length);
+        for (let y = 0; y < size; y++) {
+          for (let x = 0; x < size; x++) {
+            let s = 0;
+            for (let dy = -1; dy <= 1; dy++) {
+              for (let dx = -1; dx <= 1; dx++) {
+                const xx = (x + dx + size) % size;
+                const yy = (y + dy + size) % size;
+                s += cur[yy * size + xx];
+              }
+            }
+            out[y * size + x] = s / 9;
+          }
+        }
+        cur = out;
+      }
+      return cur;
+    };
+    const coarse = blur(noise(), 6);   // large-scale surface variation
+    const fine = blur(noise(), 1);     // per-blade micro detail
+    const height = new Float32Array(size * size);
+    for (let i = 0; i < height.length; i++) {
+      height[i] = coarse[i] * 0.65 + fine[i] * 0.35;
+    }
+    // Gradient → tangent-space normal.
     const img = ctx.createImageData(size, size);
     const strength = 5.0;
     for (let y = 0; y < size; y++) {
@@ -347,6 +436,54 @@ window.FB = window.FB || {};
     // ~40 × 18 tiles across the 120×53.3yd field keeps each tile ≈3 yd square.
     tex.repeat.set(40, 18);
     tex.anisotropy = 8;
+    return tex;
+  }
+
+  // Tiling roughness variation: smoothed noise remapped to green-channel
+  // gray so patches of grass catch the floods at different intensities.
+  function turfRoughnessMap() {
+    const size = 128;
+    const c = document.createElement('canvas'); c.width = size; c.height = size;
+    const ctx = c.getContext('2d');
+    const img = ctx.createImageData(size, size);
+    const a = new Float32Array(size * size);
+    for (let i = 0; i < a.length; i++) a[i] = Math.random();
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        let s = 0;
+        for (let dy = -2; dy <= 2; dy++) {
+          for (let dx = -2; dx <= 2; dx++) {
+            s += a[(((y + dy + size) % size) * size) + ((x + dx + size) % size)];
+          }
+        }
+        // 0.78..1.0 multiplier band — never glossy, never flat.
+        const v = Math.floor((0.78 + (s / 25) * 0.22) * 255);
+        const i = (y * size + x) * 4;
+        img.data[i] = v; img.data[i + 1] = v; img.data[i + 2] = v; img.data[i + 3] = 255;
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+    const tex = new THREE.CanvasTexture(c);
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(24, 11);
+    return tex;
+  }
+
+  // Worn-paint alpha mask for the white field markings — real painted turf
+  // is never a perfectly crisp vector line.
+  function paintWearAlpha() {
+    const size = 128;
+    const wear = window.GRAPHICS_CONFIG.field.paintWear;
+    const c = document.createElement('canvas'); c.width = size; c.height = size;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, size, size);
+    for (let n = 0; n < 2600 * wear; n++) {
+      const g = Math.floor(140 + Math.random() * 90);
+      ctx.fillStyle = 'rgb(' + g + ',' + g + ',' + g + ')';
+      ctx.fillRect(Math.random() * size, Math.random() * size, 1 + Math.random() * 2, 1 + Math.random() * 2);
+    }
+    const tex = new THREE.CanvasTexture(c);
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
     return tex;
   }
 
@@ -393,72 +530,121 @@ window.FB = window.FB || {};
     return t;
   }
 
+  // Bend a flat (rotation.x = -PI/2) plane geometry so it drapes over the
+  // field crown. With that rotation, local +Z is world up and world Z equals
+  // (mesh z - local Y), so every vertex gets localZ = crown(worldZ) + lift.
+  function drapeOnCrown(geo, meshZ, lift) {
+    const p = geo.attributes.position;
+    for (let i = 0; i < p.count; i++) {
+      const worldZ = meshZ - p.getY(i);
+      p.setZ(i, FB.fieldCrownY(worldZ) + lift);
+    }
+    geo.computeVertexNormals();
+    return geo;
+  }
+
   function createField() {
     const { FIELD_LEN, FIELD_WID, EZ } = FB.const;
+    const GC = window.GRAPHICS_CONFIG.field;
     const group = new THREE.Group();
     FB.scene.add(group);
     FB.fieldGroup = group;
 
-    const turf = new THREE.Mesh(
-      new THREE.PlaneGeometry(FIELD_LEN, FIELD_WID, 1, 1),
-      new THREE.MeshStandardMaterial({
-        map: mowedTurfTexture(),
-        normalMap: turfNormalMap(),
-        normalScale: new THREE.Vector2(0.55, 0.55),
-        roughness: 0.95,
-        metalness: 0.0,
-      })
-    );
+    // Crowned turf with wetness-aware roughness. The wind micro-sway is
+    // injected into the standard material's vertex shader so all lighting
+    // and shadow code stays stock.
+    const wetness = GC.wetness;
+    const turfMat = new THREE.MeshStandardMaterial({
+      map: mowedTurfTexture(),
+      normalMap: turfNormalMap(),
+      normalScale: new THREE.Vector2(0.55, 0.55),
+      roughnessMap: turfRoughnessMap(),
+      roughness: GC.baseRoughness * (1 - 0.45 * wetness),
+      metalness: 0.0,
+      envMapIntensity: 0.35 + wetness * 0.9,
+    });
+    FB.turfUniforms = { uTime: { value: 0 } };
+    turfMat.onBeforeCompile = (shader) => {
+      shader.uniforms.uTime = FB.turfUniforms.uTime;
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nuniform float uTime;')
+        .replace('#include <begin_vertex>',
+          '#include <begin_vertex>\n' +
+          // Local +Z is world up on this plane: imperceptible sine sway that
+          // keeps the grass from reading as a dead-still photograph.
+          'transformed.z += sin(position.x * ' + GC.windFrequency.toFixed(2) +
+          ' + position.y * 0.9 + uTime * 1.7) * ' + GC.windAmplitude.toFixed(4) + ';');
+    };
+    const turfGeo = new THREE.PlaneGeometry(FIELD_LEN, FIELD_WID, 2, 48);
+    drapeOnCrown(turfGeo, 0, 0);
+    const turf = new THREE.Mesh(turfGeo, turfMat);
     turf.rotation.x = -Math.PI / 2; turf.receiveShadow = true; group.add(turf);
 
-    const homeEZ = new THREE.Mesh(new THREE.PlaneGeometry(EZ, FIELD_WID),
+    // Runtime wetness control (e.g. FB.setFieldWetness(0.7) for a rain look).
+    FB.setFieldWetness = function (v) {
+      const w = Math.max(0, Math.min(1, v));
+      turfMat.roughness = GC.baseRoughness * (1 - 0.45 * w);
+      turfMat.envMapIntensity = 0.35 + w * 0.9;
+      turfMat.needsUpdate = true;
+    };
+
+    const homeEZGeo = drapeOnCrown(new THREE.PlaneGeometry(EZ, FIELD_WID, 1, 24), 0, 0.012);
+    const homeEZ = new THREE.Mesh(homeEZGeo,
       new THREE.MeshStandardMaterial({
         map: endZoneTexture('HIGHLANDERS', '#0a2463', '#ffffff'),
         roughness: 0.9, metalness: 0.0,
         polygonOffset: true, polygonOffsetFactor: -1,
       }));
-    homeEZ.rotation.x = -Math.PI / 2; homeEZ.position.set(-55, 0.01, 0);
+    homeEZ.rotation.x = -Math.PI / 2; homeEZ.position.set(-55, 0, 0);
     homeEZ.receiveShadow = true; group.add(homeEZ);
-    const awayEZ = new THREE.Mesh(new THREE.PlaneGeometry(EZ, FIELD_WID),
+    const awayEZ = new THREE.Mesh(homeEZGeo.clone(),
       new THREE.MeshStandardMaterial({
         map: endZoneTexture('SPARTANS', '#b22222', '#ffd700'),
         roughness: 0.9, metalness: 0.0,
         polygonOffset: true, polygonOffsetFactor: -1,
       }));
-    awayEZ.rotation.x = -Math.PI / 2; awayEZ.position.set(55, 0.01, 0);
+    awayEZ.rotation.x = -Math.PI / 2; awayEZ.position.set(55, 0, 0);
     awayEZ.receiveShadow = true; group.add(awayEZ);
 
-    // Yard lines — kept as unlit MeshBasic but explicitly not tonemapped so
-    // they stay pure white under ACES filmic tonemap.
+    // White markings — unlit, not tonemapped (so they stay TV-white under
+    // ACES), with a worn-paint alpha mask so the lines read as real painted
+    // turf instead of vector graphics.
+    const wearTex = paintWearAlpha();
     const lineMat = new THREE.MeshBasicMaterial({
       color: 0xffffff, toneMapped: false,
+      alphaMap: wearTex, transparent: true,
       polygonOffset: true, polygonOffsetFactor: -2,
     });
+    const lineGeo = drapeOnCrown(new THREE.PlaneGeometry(0.25, FIELD_WID, 1, 24), 0, 0.022);
     for (let yd = -50; yd <= 50; yd += 5) {
-      const line = new THREE.Mesh(new THREE.PlaneGeometry(0.25, FIELD_WID), lineMat);
-      line.rotation.x = -Math.PI / 2; line.position.set(yd, 0.02, 0); group.add(line);
+      const line = new THREE.Mesh(lineGeo, lineMat);
+      line.rotation.x = -Math.PI / 2; line.position.set(yd, 0, 0); group.add(line);
     }
     for (let yd = -40; yd <= 40; yd += 10) {
       const n = 50 - Math.abs(yd);
       for (const zSide of [-18, 18]) {
         const tex = yardNumberTexture(n);
         const pl = new THREE.Mesh(new THREE.PlaneGeometry(5, 5),
-          new THREE.MeshBasicMaterial({ map: tex, transparent: true, polygonOffset: true, polygonOffsetFactor: -3 }));
+          new THREE.MeshBasicMaterial({ map: tex, transparent: true, toneMapped: false, polygonOffset: true, polygonOffsetFactor: -3 }));
         pl.rotation.x = -Math.PI / 2;
         // Numbers on the +z sideline must flip so they read right-side-up to
         // that sideline's viewer.
         if (zSide > 0) pl.rotation.z = Math.PI;
-        pl.position.set(yd, 0.03, zSide); group.add(pl);
+        pl.position.set(yd, FB.fieldCrownY(zSide) + 0.03, zSide); group.add(pl);
       }
     }
-    const hashMat = new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false });
+    const hashMat = new THREE.MeshBasicMaterial({
+      color: 0xffffff, toneMapped: false, alphaMap: wearTex, transparent: true,
+    });
     for (let yd = -49; yd <= 49; yd++) {
       for (const z of [-6, 6]) {
         const h = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.2), hashMat);
-        h.rotation.x = -Math.PI / 2; h.position.set(yd, 0.025, z); group.add(h);
+        h.rotation.x = -Math.PI / 2; h.position.set(yd, FB.fieldCrownY(z) + 0.025, z); group.add(h);
       }
     }
-    const sidelineMat = new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false });
+    const sidelineMat = new THREE.MeshBasicMaterial({
+      color: 0xffffff, toneMapped: false, alphaMap: wearTex, transparent: true,
+    });
     for (const z of [-FIELD_WID / 2, FIELD_WID / 2]) {
       const s = new THREE.Mesh(new THREE.PlaneGeometry(FIELD_LEN, 0.3), sidelineMat);
       s.rotation.x = -Math.PI / 2; s.position.set(0, 0.02, z); group.add(s);
@@ -477,16 +663,20 @@ window.FB = window.FB || {};
     }
 
     // Broadcast overlay lines: pure color, not tonemapped, so they read
-    // through the ACES pipeline the way they do on TV.
-    FB.firstDownLine = new THREE.Mesh(new THREE.PlaneGeometry(0.4, FIELD_WID),
+    // through the ACES pipeline the way they do on TV. Pre-draped on the
+    // crown — the crown only varies across the width, so the bent geometry
+    // stays valid as these lines slide along X.
+    FB.firstDownLine = new THREE.Mesh(
+      drapeOnCrown(new THREE.PlaneGeometry(0.4, FIELD_WID, 1, 24), 0, 0.04),
       new THREE.MeshBasicMaterial({ color: 0xffea00, transparent: true, opacity: 0.75, toneMapped: false,
         polygonOffset: true, polygonOffsetFactor: -4 }));
-    FB.firstDownLine.rotation.x = -Math.PI / 2; FB.firstDownLine.position.y = 0.04; group.add(FB.firstDownLine);
+    FB.firstDownLine.rotation.x = -Math.PI / 2; FB.firstDownLine.position.y = 0; group.add(FB.firstDownLine);
 
-    FB.losLine = new THREE.Mesh(new THREE.PlaneGeometry(0.35, FIELD_WID),
+    FB.losLine = new THREE.Mesh(
+      drapeOnCrown(new THREE.PlaneGeometry(0.35, FIELD_WID, 1, 24), 0, 0.04),
       new THREE.MeshBasicMaterial({ color: 0x4cc9f0, transparent: true, opacity: 0.7, toneMapped: false,
         polygonOffset: true, polygonOffsetFactor: -4 }));
-    FB.losLine.rotation.x = -Math.PI / 2; FB.losLine.position.y = 0.04; group.add(FB.losLine);
+    FB.losLine.rotation.x = -Math.PI / 2; FB.losLine.position.y = 0; group.add(FB.losLine);
 
     createReferee();
   }
@@ -576,7 +766,7 @@ window.FB = window.FB || {};
       const p = Math.min(1, r.t / r.durWalk);
       const x = r.fx + (r.tx - r.fx) * p;
       const z = r.fz + (r.tz - r.fz) * p;
-      FB.referee.position.set(x, 0, z);
+      FB.referee.position.set(x, FB.fieldCrownY(z), z);
       const dx = r.tx - r.fx, dz = r.tz - r.fz;
       if (dx * dx + dz * dz > 0.0001) FB.referee.rotation.y = Math.atan2(dx, dz);
       FB.ball.position.set(x, 2.1, z + 0.35);
@@ -586,7 +776,7 @@ window.FB = window.FB || {};
       const p = Math.min(1, r.t / r.durPlace);
       const ballY = 2.1 + (0.35 - 2.1) * p;
       FB.ball.position.set(r.tx, ballY, r.tz);
-      FB.referee.position.set(r.tx, 0, r.tz);
+      FB.referee.position.set(r.tx, FB.fieldCrownY(r.tz), r.tz);
       // Simulate a small bow by scaling the referee vertically.
       FB.referee.scale.y = 1 - 0.15 * Math.sin(Math.PI * p);
       if (p >= 1) {
@@ -599,7 +789,7 @@ window.FB = window.FB || {};
       const p = Math.min(1, r.t / r.durStep);
       const x = r.tx + (r.sx - r.tx) * p;
       const z = r.tz + (r.sz - r.tz) * p;
-      FB.referee.position.set(x, 0, z);
+      FB.referee.position.set(x, FB.fieldCrownY(z), z);
       const dx = r.sx - r.tx, dz = r.sz - r.tz;
       if (dx * dx + dz * dz > 0.0001) FB.referee.rotation.y = Math.atan2(dx, dz);
       if (p >= 1 && !r.fired) {
@@ -886,7 +1076,7 @@ window.FB = window.FB || {};
       map: jumboTex,
       emissive: 0xffffff,
       emissiveMap: jumboTex,
-      emissiveIntensity: 1.1,
+      emissiveIntensity: 0.85,   // bright but readable — 1.1 clipped to white under bloom
       roughness: 0.35, metalness: 0.1,
     });
     const frameMat = new THREE.MeshStandardMaterial({ color: 0x1a1f28, roughness: 0.55, metalness: 0.35 });
@@ -911,40 +1101,124 @@ window.FB = window.FB || {};
   }
 
   // ---- 4 stadium light poles at the corners with emissive bulbs ----
+  // The visible bulb clusters sit exactly where the Phase-3 SpotLight
+  // sources are, so the lens flares, light shafts, and actual illumination
+  // all agree on where the light comes from.
   function buildLightPoles(g) {
+    const GC = window.GRAPHICS_CONFIG.lights;
+    const H = GC.poleHeight;
     const poleMat = new THREE.MeshStandardMaterial({ color: 0x1e1e1e, roughness: 0.6, metalness: 0.5 });
     const bulbMat = new THREE.MeshStandardMaterial({
       color: 0xffffcc,
       emissive: 0xfff2cc,
-      emissiveIntensity: 2.2,
+      emissiveIntensity: 2.6,
       roughness: 0.2,
     });
-    const corners = [
-      { x: -78, z: -44 }, { x:  78, z: -44 },
-      { x: -78, z:  44 }, { x:  78, z:  44 },
-    ];
-    for (const c of corners) {
-      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.65, 32, 8), poleMat);
-      pole.position.set(c.x, 16, c.z);
+    const flareTextures = GC.lensflare.enabled ? makeFlareTextures() : null;
+    for (const c of GC.cornerXZ) {
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.7, H, 8), poleMat);
+      pole.position.set(c.x, H / 2, c.z);
       pole.castShadow = true;
       g.add(pole);
       // Cross arm for the bulb cluster
       const arm = new THREE.Mesh(new THREE.BoxGeometry(3.5, 0.5, 0.5), poleMat);
-      arm.position.set(c.x + Math.sign(-c.x) * 1.5, 32.2, c.z + Math.sign(-c.z) * 1.5);
+      arm.position.set(c.x + Math.sign(-c.x) * 1.5, H + 0.2, c.z + Math.sign(-c.z) * 1.5);
       g.add(arm);
-      // 3x3 lamp grid
+      // 4x3 lamp grid — bright enough to clip into the bloom threshold.
       const cluster = new THREE.Group();
-      cluster.position.set(c.x + Math.sign(-c.x) * 2.5, 32.2, c.z + Math.sign(-c.z) * 2.5);
-      for (let i = 0; i < 9; i++) {
-        const bx = ((i % 3) - 1) * 0.85;
-        const by = (Math.floor(i / 3) - 1) * 0.75;
+      cluster.position.set(c.x + Math.sign(-c.x) * 2.5, H + 0.2, c.z + Math.sign(-c.z) * 2.5);
+      for (let i = 0; i < 12; i++) {
+        const bx = ((i % 4) - 1.5) * 0.85;
+        const by = (Math.floor(i / 4) - 1) * 0.75;
         const bulb = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.55, 0.22), bulbMat);
         bulb.position.set(bx, by, 0);
         cluster.add(bulb);
       }
       cluster.lookAt(0, 8, 0);
       g.add(cluster);
+
+      // Broadcast-lens flare anchored on the cluster (Phase 5).
+      if (flareTextures && THREE.Lensflare && THREE.LensflareElement) {
+        const flare = new THREE.Lensflare();
+        flare.addElement(new THREE.LensflareElement(flareTextures.core, GC.lensflare.size, 0, new THREE.Color(0xfff2cc)));
+        flare.addElement(new THREE.LensflareElement(flareTextures.ghost, 28, 0.45));
+        flare.addElement(new THREE.LensflareElement(flareTextures.ghost, 16, 0.8));
+        cluster.add(flare);
+      }
+
+      // Volumetric-style light shaft: a SHORT additive cone hanging off the
+      // lamp head, faded along its length by a gradient texture — a cheap
+      // god-ray stand-in. Kept deliberately small: a full light-to-field
+      // cone puts the gameplay camera inside it and the additive veil
+      // washes out the whole frame.
+      if (GC.lightShafts.enabled) {
+        const target = new THREE.Vector3(c.x * 0.15, 0, c.z * 0.15);
+        const src = new THREE.Vector3(c.x, H, c.z);
+        const dir = target.clone().sub(src).normalize();
+        const len = 26, baseR = 6.5;
+        const shaft = new THREE.Mesh(
+          new THREE.ConeGeometry(baseR, len, 10, 1, true),
+          new THREE.MeshBasicMaterial({
+            color: GC.lightShafts.color,
+            transparent: true,
+            opacity: GC.lightShafts.opacity,
+            alphaMap: shaftGradientTex(),
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            side: THREE.FrontSide,
+            fog: false,
+          })
+        );
+        // Cone apex points +Y by default; flip so the apex sits at the lamp
+        // and the (faded-out) base hangs toward the field.
+        shaft.position.copy(src.clone().addScaledVector(dir, len / 2));
+        shaft.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.clone().negate());
+        g.add(shaft);
+      }
     }
+  }
+
+  // Vertical alpha gradient for the light shafts: bright at the lamp (cone
+  // apex = +V on the cone's side UVs), fading to nothing toward the base.
+  let _shaftTex = null;
+  function shaftGradientTex() {
+    if (_shaftTex) return _shaftTex;
+    const c = document.createElement('canvas'); c.width = 8; c.height = 64;
+    const ctx = c.getContext('2d');
+    // CanvasTexture flips Y: canvas row 0 lands at v=1, which is the cone
+    // APEX (the lamp) — keep that end bright and fade toward the base.
+    const grad = ctx.createLinearGradient(0, 0, 0, 64);
+    grad.addColorStop(0, 'rgba(255,255,255,1)');     // apex at the lamp
+    grad.addColorStop(1, 'rgba(255,255,255,0)');     // base hanging in the air
+    ctx.fillStyle = grad; ctx.fillRect(0, 0, 8, 64);
+    _shaftTex = new THREE.CanvasTexture(c);
+    return _shaftTex;
+  }
+
+  // Soft radial-gradient flare sprites baked on canvas — no asset downloads.
+  function makeFlareTextures() {
+    const make = (size, stops) => {
+      const c = document.createElement('canvas'); c.width = c.height = size;
+      const ctx = c.getContext('2d');
+      const grad = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+      for (const [t, col] of stops) grad.addColorStop(t, col);
+      ctx.fillStyle = grad; ctx.fillRect(0, 0, size, size);
+      const tex = new THREE.CanvasTexture(c);
+      return tex;
+    };
+    return {
+      core: make(128, [
+        [0, 'rgba(255,248,225,1)'],
+        [0.25, 'rgba(255,236,180,0.55)'],
+        [0.6, 'rgba(255,220,150,0.12)'],
+        [1, 'rgba(255,220,150,0)'],
+      ]),
+      ghost: make(64, [
+        [0, 'rgba(190,215,255,0.45)'],
+        [0.5, 'rgba(190,215,255,0.12)'],
+        [1, 'rgba(190,215,255,0)'],
+      ]),
+    };
   }
 
   // ---- Rear-wall "BECK STADIUM" signage (kept from the old scene) ----

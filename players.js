@@ -105,9 +105,18 @@
   const _limbGeoCache = new Map();
   function _muscleBucket(mf) { return Math.round(mf / 0.05) * 0.05; }
 
+  // Tessellation follows the active quality tier (graphics-config.js):
+  // HIGH pushes the lathes/spheres toward a smooth broadcast-closeup
+  // silhouette, LOW keeps old-phone GPUs at 60fps.
+  function tess() {
+    const GC = window.GRAPHICS_CONFIG;
+    return GC.player.tessellation[GC.tier()] || GC.player.tessellation.MEDIUM;
+  }
+
   function getLimbGeometry(kind, muscleFactor) {
     const bucket = _muscleBucket(muscleFactor);
-    const key = kind + ':' + bucket.toFixed(2);
+    const segs = tess().lathe;
+    const key = kind + ':' + bucket.toFixed(2) + ':' + segs;
     let geo = _limbGeoCache.get(key);
     if (geo) return geo;
     const profile = LIMB_PROFILES[kind];
@@ -115,11 +124,194 @@
     for (let i = 0; i < profile.length; i++) {
       pts[i] = new THREE.Vector2(profile[i][0] * bucket, profile[i][1]);
     }
-    geo = new THREE.LatheGeometry(pts, 12);
+    geo = new THREE.LatheGeometry(pts, segs);
     geo.computeVertexNormals();
     _limbGeoCache.set(key, geo);
     return geo;
   }
+
+  // ============================================================
+  //  PHASE 1 — Uniform system + PBR material library
+  //  ----------------------------------------------------------
+  //  FB.UniformSystem turns (team colors, skin tone, number,
+  //  name, position, home/away variant) into the full set of
+  //  MeshPhysicalMaterial instances for one player. Procedural
+  //  detail maps (jersey weave, glove grip) are generated once
+  //  on a canvas and shared across all 44+ players.
+  // ============================================================
+
+  let _wovenTex = null;
+  // Knit-fabric normal map: a sin×sin weave lattice plus thread noise,
+  // converted from a heightfield to tangent-space normals.
+  function wovenJerseyNormal() {
+    if (_wovenTex) return _wovenTex;
+    const size = 64;
+    const c = document.createElement('canvas'); c.width = c.height = size;
+    const ctx = c.getContext('2d');
+    const height = new Float32Array(size * size);
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const weave = Math.sin(x * Math.PI / 2) * Math.sin(y * Math.PI / 2);
+        height[y * size + x] = 0.5 + weave * 0.32 + (Math.random() - 0.5) * 0.18;
+      }
+    }
+    const img = ctx.createImageData(size, size);
+    const strength = 2.2;
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const xl = (x - 1 + size) % size, xr = (x + 1) % size;
+        const yt = (y - 1 + size) % size, yb = (y + 1) % size;
+        const dx = (height[y * size + xr] - height[y * size + xl]) * strength;
+        const dy = (height[yb * size + x] - height[yt * size + x]) * strength;
+        const len = Math.hypot(dx, dy, 1);
+        const i = (y * size + x) * 4;
+        img.data[i] = Math.floor((-dx / len * 0.5 + 0.5) * 255);
+        img.data[i + 1] = Math.floor((-dy / len * 0.5 + 0.5) * 255);
+        img.data[i + 2] = Math.floor((1 / len * 0.5 + 0.5) * 255);
+        img.data[i + 3] = 255;
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+    _wovenTex = new THREE.CanvasTexture(c);
+    _wovenTex.wrapS = _wovenTex.wrapT = THREE.RepeatWrapping;
+    _wovenTex.repeat.set(7, 7);
+    return _wovenTex;
+  }
+
+  let _gripTex = null;
+  // Tacky glove-grip normal: dense random micro-bumps.
+  function gloveGripNormal() {
+    if (_gripTex) return _gripTex;
+    const size = 32;
+    const c = document.createElement('canvas'); c.width = c.height = size;
+    const ctx = c.getContext('2d');
+    const img = ctx.createImageData(size, size);
+    for (let i = 0; i < size * size; i++) {
+      const nx = (Math.random() - 0.5) * 0.8;
+      const ny = (Math.random() - 0.5) * 0.8;
+      const nz = 1;
+      const len = Math.hypot(nx, ny, nz);
+      img.data[i * 4] = Math.floor((nx / len * 0.5 + 0.5) * 255);
+      img.data[i * 4 + 1] = Math.floor((ny / len * 0.5 + 0.5) * 255);
+      img.data[i * 4 + 2] = Math.floor((nz / len * 0.5 + 0.5) * 255);
+      img.data[i * 4 + 3] = 255;
+    }
+    ctx.putImageData(img, 0, 0);
+    _gripTex = new THREE.CanvasTexture(c);
+    _gripTex.wrapS = _gripTex.wrapT = THREE.RepeatWrapping;
+    _gripTex.repeat.set(3, 3);
+    return _gripTex;
+  }
+
+  // Deterministic skin tone per player so a roster renders identically
+  // every game (4 presets from graphics-config.js).
+  function skinToneFor(player) {
+    const tones = window.GRAPHICS_CONFIG.player.skinTones;
+    let h = 0;
+    const s = String(player.name || '') + String(player.number || 0);
+    for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+    return tones[Math.abs(h) % tones.length];
+  }
+
+  FB.UniformSystem = class {
+    /**
+     * @param {object} opts
+     *   primaryColor / secondaryColor — team hex strings
+     *   skinTone      — hex string from the preset table
+     *   jerseyNumber  — printed front and back
+     *   lastName      — nameplate above the back number
+     *   playerPosition— roster slot (QB/WR/... — visor offered to skill spots)
+     *   variant       — 'home' (colored) | 'away' (white shell w/ team numbers)
+     */
+    constructor(opts) {
+      const P = window.GRAPHICS_CONFIG.player;
+      const primary = new THREE.Color(opts.primaryColor);
+      const secondary = new THREE.Color(opts.secondaryColor);
+      const jerseyColor = opts.variant === 'away' ? new THREE.Color(0xf2f2f2) : primary;
+      const numberBg = '#' + jerseyColor.getHexString();
+      const numberFg = opts.variant === 'away' ? opts.primaryColor : opts.secondaryColor;
+      this.primary = primary;
+      this.secondary = secondary;
+      this.skinTone = new THREE.Color(opts.skinTone);
+
+      const weave = wovenJerseyNormal();
+      const weaveScale = new THREE.Vector2(0.4, 0.4);
+
+      this.jersey = new THREE.MeshPhysicalMaterial({
+        color: jerseyColor, roughness: P.jersey.roughness, metalness: P.jersey.metalness,
+        normalMap: weave, normalScale: weaveScale,
+      });
+      this.jerseyFront = new THREE.MeshPhysicalMaterial({
+        map: jerseyFrontTexture(opts.jerseyNumber, numberBg, numberFg),
+        roughness: P.jersey.roughness, metalness: P.jersey.metalness,
+        normalMap: weave, normalScale: weaveScale,
+      });
+      this.jerseyBack = new THREE.MeshPhysicalMaterial({
+        map: jerseyBackTexture(opts.jerseyNumber, opts.lastName, numberBg, numberFg),
+        roughness: P.jersey.roughness, metalness: P.jersey.metalness,
+        normalMap: weave, normalScale: weaveScale,
+      });
+      this.jerseyFront.map.encoding = THREE.sRGBEncoding;
+      this.jerseyBack.map.encoding = THREE.sRGBEncoding;
+
+      this.pants = new THREE.MeshPhysicalMaterial({
+        color: secondary, roughness: P.pants.roughness, metalness: P.pants.metalness,
+        normalMap: weave, normalScale: new THREE.Vector2(0.25, 0.25),
+      });
+      this.pantStripe = new THREE.MeshPhysicalMaterial({
+        color: secondary.clone().lerp(new THREE.Color(0xffffff), 0.7),
+        roughness: P.pants.roughness, metalness: 0.0,
+      });
+
+      // Hard shiny painted polycarbonate.
+      this.helmet = new THREE.MeshPhysicalMaterial({
+        color: primary,
+        roughness: P.helmet.roughness, metalness: P.helmet.metalness,
+        clearcoat: P.helmet.clearcoat, clearcoatRoughness: P.helmet.clearcoatRoughness,
+        envMapIntensity: 1.1,
+      });
+      // Brushed steel cage.
+      this.facemask = new THREE.MeshPhysicalMaterial({
+        color: P.facemask.color, roughness: P.facemask.roughness, metalness: P.facemask.metalness,
+      });
+      // Dark tinted polycarbonate visor.
+      this.visor = new THREE.MeshPhysicalMaterial({
+        color: P.visor.color,
+        roughness: P.visor.roughness, metalness: P.visor.metalness,
+        transmission: P.visor.transmission,
+        transparent: true, opacity: P.visor.opacity,
+        side: THREE.DoubleSide,
+        envMapIntensity: 1.4,
+      });
+
+      // Skin with a faint warm sheen as an SSS stand-in (r128's
+      // MeshPhysicalMaterial sheen is a color slot).
+      this.skin = new THREE.MeshPhysicalMaterial({
+        color: this.skinTone, roughness: P.skin.roughness, metalness: P.skin.metalness,
+      });
+      if ('sheen' in this.skin) {
+        this.skin.sheen = this.skinTone.clone().multiplyScalar(0.25);
+      }
+
+      this.glove = new THREE.MeshPhysicalMaterial({
+        color: P.glove.color, roughness: P.glove.roughness, metalness: P.glove.metalness,
+        normalMap: gloveGripNormal(), normalScale: new THREE.Vector2(0.5, 0.5),
+      });
+      this.cleatSole = new THREE.MeshPhysicalMaterial({
+        color: P.cleatSole.color, roughness: P.cleatSole.roughness, metalness: P.cleatSole.metalness,
+      });
+      this.cleatUpper = new THREE.MeshPhysicalMaterial({
+        color: P.cleatUpper.color, roughness: P.cleatUpper.roughness, metalness: P.cleatUpper.metalness,
+      });
+      this.sock = new THREE.MeshPhysicalMaterial({ color: 0xf5f5f5, roughness: 0.85, metalness: 0.0 });
+      this.belt = new THREE.MeshPhysicalMaterial({ color: 0x141414, roughness: 0.55, metalness: 0.1 });
+      // Shoulder-pad shell reads slightly tighter than jersey cloth.
+      this.shoulder = new THREE.MeshPhysicalMaterial({
+        color: jerseyColor, roughness: 0.62, metalness: 0.05,
+        normalMap: weave, normalScale: weaveScale,
+      });
+    }
+  };
 
   function jerseyFrontTexture(num, bg, fg) {
     const c = document.createElement('canvas'); c.width = 128; c.height = 128;
@@ -182,19 +374,84 @@
     return parseInt(m[1], 10) * 12 + parseInt(m[2], 10);
   }
 
+  // ---- LOD stand-ins (Phase 7) ----
+  // Level 1: a ~150-triangle static figure in team colors for mid-distance.
+  // Level 2: a camera-facing sprite for the far field. Both share cached
+  // materials keyed by team colors so 44 players cost a handful of materials.
+  const _lodMatCache = new Map();
+  function lodLambert(colorHex) {
+    let m = _lodMatCache.get(colorHex);
+    if (!m) {
+      m = new THREE.MeshLambertMaterial({ color: colorHex });
+      m.userData.sharedLOD = true;
+      _lodMatCache.set(colorHex, m);
+    }
+    return m;
+  }
+  function buildSimpleLOD(uniforms) {
+    const grp = new THREE.Group();
+    const jersey = lodLambert('#' + uniforms.jersey.color.getHexString());
+    const pants = lodLambert('#' + uniforms.pants.color.getHexString());
+    const helmet = lodLambert('#' + uniforms.helmet.color.getHexString());
+    const legs = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.3, 1.62, 7), pants);
+    legs.position.y = 0.81; grp.add(legs);
+    const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.46, 1.35, 8), jersey);
+    torso.position.y = 2.12; grp.add(torso);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.36, 8, 6), helmet);
+    head.position.y = 3.1; grp.add(head);
+    return grp;
+  }
+  const _spriteMatCache = new Map();
+  function buildBillboardLOD(uniforms) {
+    const key = uniforms.jersey.color.getHexString() + ':' + uniforms.pants.color.getHexString();
+    let mat = _spriteMatCache.get(key);
+    if (!mat) {
+      const c = document.createElement('canvas'); c.width = 32; c.height = 64;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#' + uniforms.pants.color.getHexString();
+      ctx.fillRect(10, 34, 12, 26);
+      ctx.fillStyle = '#' + uniforms.jersey.color.getHexString();
+      ctx.fillRect(6, 14, 20, 22);
+      ctx.beginPath(); ctx.arc(16, 8, 7, 0, Math.PI * 2);
+      ctx.fillStyle = '#' + uniforms.helmet.color.getHexString(); ctx.fill();
+      const tex = new THREE.CanvasTexture(c);
+      tex.magFilter = THREE.NearestFilter;
+      mat = new THREE.SpriteMaterial({ map: tex, transparent: true });
+      mat.userData.sharedLOD = true;
+      _spriteMatCache.set(key, mat);
+    }
+    const sprite = new THREE.Sprite(mat);
+    sprite.scale.set(1.7, 3.4, 1);
+    sprite.position.y = 1.7;
+    // Sprites ignore parent rotation by design — that's the point of LOD 2.
+    const grp = new THREE.Group();
+    grp.add(sprite);
+    return grp;
+  }
+
   function createPlayerMesh(player, teamKey) {
     const team = FB.teams[teamKey];
+    const GC = window.GRAPHICS_CONFIG;
+    const T = tess();
     const primary = new THREE.Color(team.primaryColor);
     const secondary = new THREE.Color(team.secondaryColor);
-    const primaryHex = '#' + primary.getHexString();
     const secondaryHex = '#' + secondary.getHexString();
-    // PBR uniforms — broadcast-style with sRGB output + ACES tonemap.
-    const skinMat = new THREE.MeshStandardMaterial({ color: 0xc48a66, roughness: 0.72, metalness: 0.0 });
-    const gloveMat = new THREE.MeshStandardMaterial({ color: 0x141414, roughness: 0.5, metalness: 0.15 });
-    const cleatMat = new THREE.MeshStandardMaterial({ color: 0x0a0a0a, roughness: 0.45, metalness: 0.2 });
-    const sockMat = new THREE.MeshStandardMaterial({ color: 0xf5f5f5, roughness: 0.85, metalness: 0.0 });
-    const beltMat = new THREE.MeshStandardMaterial({ color: 0x141414, roughness: 0.55, metalness: 0.15 });
-    const pantStripeMat = new THREE.MeshStandardMaterial({ color: secondary.clone().lerp(new THREE.Color(0xffffff), 0.7), roughness: 0.7, metalness: 0.0 });
+
+    // PHASE 1 — one UniformSystem per player builds the full PBR wardrobe.
+    const uniforms = new FB.UniformSystem({
+      primaryColor: '#' + primary.getHexString(),
+      secondaryColor: secondaryHex,
+      skinTone: skinToneFor(player),
+      jerseyNumber: player.number,
+      lastName: (player.name || '').split(' ').slice(-1)[0],
+      playerPosition: player.position || '',
+      variant: 'home',
+    });
+    const skinMat = uniforms.skin;
+    const gloveMat = uniforms.glove;
+    const sockMat = uniforms.sock;
+    const beltMat = uniforms.belt;
+    const pantStripeMat = uniforms.pantStripe;
 
     // --- Proportional scaling from real listed height/weight ---
     const heightIn = parseHeightInches(player.height) || 70;
@@ -208,7 +465,7 @@
     const torsoFactor = 1.0 + (muscleFactor - 1.0) * 0.4;
 
     const g = new THREE.Group();
-    const pantsMat = new THREE.MeshStandardMaterial({ color: secondary, roughness: 0.78, metalness: 0.0 });
+    const pantsMat = uniforms.pants;
 
     // --- Legs with hip + knee pivots so they can swing and bend. ---
     // Each leg is a chain: hipPivot (at hip joint) -> thigh + kneePivot.
@@ -267,10 +524,32 @@
       calf.receiveShadow = true;
       kneePivot.add(calf);
 
-      const foot = new THREE.Mesh(new THREE.BoxGeometry(footW, footH, footL), cleatMat);
-      foot.position.set(0, -calfH - footH / 2, 0.06);
-      foot.castShadow = true;
-      kneePivot.add(foot);
+      // Cleat: defined sole + upper + rounded toe box instead of a flat slab.
+      const soleH = 0.035;
+      const sole = new THREE.Mesh(new THREE.BoxGeometry(footW, soleH, footL), uniforms.cleatSole);
+      sole.position.set(0, -calfH - footH + soleH / 2, 0.06);
+      kneePivot.add(sole);
+      const upper = new THREE.Mesh(new THREE.BoxGeometry(footW * 0.94, footH - soleH, footL * 0.92), uniforms.cleatUpper);
+      upper.position.set(0, -calfH - (footH - soleH) / 2 - soleH * 0.4, 0.05);
+      upper.castShadow = true;
+      kneePivot.add(upper);
+      const toe = new THREE.Mesh(new THREE.SphereGeometry(footW * 0.5, 8, 6), uniforms.cleatUpper);
+      toe.scale.set(0.95, (footH - soleH) / (footW), 1.15);
+      toe.position.set(0, -calfH - footH / 2 - soleH * 0.2, 0.06 + footL / 2 - footW * 0.25);
+      kneePivot.add(toe);
+
+      // Knee pad: a subtle bump under the pant hem on the front of the knee.
+      const kneePad = new THREE.Mesh(new THREE.SphereGeometry(0.105 * muscleFactor, 8, 6), pantsMat);
+      kneePad.scale.set(1.1, 1.2, 0.7);
+      kneePad.position.set(0, 0.03, 0.14 * muscleFactor);
+      kneePivot.add(kneePad);
+
+      // Thigh pad: a wide shallow bump under the pants on the front of the
+      // thigh — reads through the cloth like real thigh boards.
+      const thighPad = new THREE.Mesh(new THREE.SphereGeometry(0.13 * muscleFactor, 8, 6), pantsMat);
+      thighPad.scale.set(1.25, 1.7, 0.55);
+      thighPad.position.set(0, -thighH * 0.42, 0.21 * muscleFactor);
+      hipPivot.add(thighPad);
 
       rigLegs[side] = { hip: hipPivot, knee: kneePivot };
     }
@@ -294,12 +573,11 @@
     const torsoY = torsoBottomY + torsoH / 2;
     const torsoTopW = 1.08 * torsoFactor, torsoBotW = 0.92 * torsoFactor;
     const torsoTopD = 0.58 * torsoFactor, torsoBotD = 0.52 * torsoFactor;
-    const frontTex = jerseyFrontTexture(player.number, primaryHex, secondaryHex);
-    const lastName = (player.name || '').split(' ').slice(-1)[0];
-    const backTex = jerseyBackTexture(player.number, lastName, primaryHex, secondaryHex);
     // Use a buffer geometry box then warp vertices for taper. Simplest route: a
-    // shallow trapezoidal prism using BoxGeometry + per-vertex scale.
-    const torsoGeo = new THREE.BoxGeometry(1, torsoH, 1, 1, 1, 1);
+    // shallow trapezoidal prism using BoxGeometry + per-vertex scale. The
+    // extra height segments give the cloth weave normal map surface to bend
+    // over, so the jersey drapes rather than reading as a crate.
+    const torsoGeo = new THREE.BoxGeometry(1, torsoH, 1, 2, 3, 2);
     const tp = torsoGeo.attributes.position;
     for (let i = 0; i < tp.count; i++) {
       const y = tp.getY(i);
@@ -310,17 +588,10 @@
       tp.setZ(i, tp.getZ(i) * d);
     }
     torsoGeo.computeVertexNormals();
-    // Jersey textures need sRGB so the printed numbers aren't washed under ACES.
-    frontTex.encoding = THREE.sRGBEncoding;
-    backTex.encoding = THREE.sRGBEncoding;
-    const jerseyCfg = { roughness: 0.72, metalness: 0.0 };
+    // Box face order: +x, -x, +y, -y, +z(front number), -z(back name+number).
     const torsoMats = [
-      new THREE.MeshStandardMaterial(Object.assign({ color: primary }, jerseyCfg)),
-      new THREE.MeshStandardMaterial(Object.assign({ color: primary }, jerseyCfg)),
-      new THREE.MeshStandardMaterial(Object.assign({ color: primary }, jerseyCfg)),
-      new THREE.MeshStandardMaterial(Object.assign({ color: primary }, jerseyCfg)),
-      new THREE.MeshStandardMaterial(Object.assign({ map: frontTex }, jerseyCfg)),
-      new THREE.MeshStandardMaterial(Object.assign({ map: backTex }, jerseyCfg)),
+      uniforms.jersey, uniforms.jersey, uniforms.jersey, uniforms.jersey,
+      uniforms.jerseyFront, uniforms.jerseyBack,
     ];
     const torso = new THREE.Mesh(torsoGeo, torsoMats);
     torso.position.y = torsoY;
@@ -330,9 +601,9 @@
     // --- Shoulders: slim yoke + full rounded caps for a natural shoulder line. ---
     const padsY = torsoY + torsoH / 2 + 0.06;
     const shoulderSpan = 1.18 * torsoFactor;
-    const shoulderMat = new THREE.MeshStandardMaterial({ color: primary, roughness: 0.62, metalness: 0.05 });
+    const shoulderMat = uniforms.shoulder;
     const yoke = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.14, 0.14, shoulderSpan, 12),
+      new THREE.CylinderGeometry(0.14, 0.14, shoulderSpan, T.lathe),
       shoulderMat
     );
     yoke.rotation.z = Math.PI / 2;
@@ -342,7 +613,7 @@
     const capR = 0.22 * torsoFactor;
     for (const sgn of [-1, 1]) {
       const cap = new THREE.Mesh(
-        new THREE.SphereGeometry(capR, 14, 12),
+        new THREE.SphereGeometry(capR, T.sphereW, T.sphereH),
         shoulderMat
       );
       cap.position.set(sgn * shoulderSpan / 2, padsY, 0);
@@ -361,7 +632,7 @@
 
     // --- Arms with shoulder + elbow pivots so arms can swing and elbow can
     //     stay bent ~90° pointing opposite of motion.
-    const armMat = new THREE.MeshStandardMaterial({ color: primary, roughness: 0.72, metalness: 0.0 });
+    const armMat = uniforms.jersey;
     const upperLen = 0.6;
     const foreLen = 0.55;
     const rigArms = {};
@@ -402,7 +673,9 @@
       fore.receiveShadow = true;
       elbowPivot.add(fore);
 
-      const glove = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.28, 0.2), gloveMat);
+      // Gloved hand: a rounded mitt fitted to the wrist instead of a box.
+      const glove = new THREE.Mesh(new THREE.SphereGeometry(0.13, 10, 8), gloveMat);
+      glove.scale.set(0.85, 1.25, 0.78);
       glove.position.set(0, -foreLen - 0.12, 0);
       glove.castShadow = true;
       elbowPivot.add(glove);
@@ -420,27 +693,32 @@
     neck.position.y = neckY;
     g.add(neck);
     const headY = neckY + 0.22;
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.22, 12, 10), skinMat);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.22, T.sphereW, T.sphereH), skinMat);
     head.position.y = headY;
     head.scale.set(0.95, 1.02, 1.02);
     g.add(head);
 
-    // --- Helmet: ellipsoid shell with chin strap + earhole + facemask ---
-    // MeshPhysicalMaterial with clearcoat so the helmet reads like painted
-    // polycarbonate under the sun.
+    // --- Helmet: ellipsoid shell + tinted visor + earholes + facemask ---
+    // Hard shiny polycarbonate (clearcoat 1.0 / roughness 0.12 from the
+    // uniform system) that picks up the stadium IBL.
     const helmetY = headY + 0.11;
-    const helmetMat = new THREE.MeshPhysicalMaterial({
-      color: primary,
-      roughness: 0.32,
-      metalness: 0.05,
-      clearcoat: 1.0,
-      clearcoatRoughness: 0.12,
-    });
-    const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.36, 18, 14), helmetMat);
+    const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.36, T.sphereW + 4, T.sphereH + 2), uniforms.helmet);
     helmet.position.y = helmetY;
     helmet.scale.set(1.08, 1.0, 1.18);
     helmet.castShadow = true;
     g.add(helmet);
+
+    // Semi-transparent tinted visor: a front slice of the helmet sphere at
+    // eye level, slightly inset from the shell so it never z-fights.
+    const visor = new THREE.Mesh(
+      new THREE.SphereGeometry(0.345, 16, 8,
+        Math.PI * 0.30, Math.PI * 0.40,    // phi: patch centered on local +Z
+        Math.PI * 0.42, Math.PI * 0.22),   // theta: eye-level band
+      uniforms.visor
+    );
+    visor.position.y = helmetY;
+    visor.scale.set(1.06, 1.0, 1.16);
+    g.add(visor);
     // Back lip / bumper
     const bumper = new THREE.Mesh(
       new THREE.TorusGeometry(0.34, 0.04, 6, 16),
@@ -460,8 +738,9 @@
       ear.position.set(sgn * 0.4, helmetY - 0.02, 0);
       g.add(ear);
     }
-    // Facemask — thin cage of dark metal bars
-    const maskMat = new THREE.MeshStandardMaterial({ color: 0x707076, roughness: 0.35, metalness: 0.85 });
+    // Facemask — modeled brushed-steel cage (metalness 0.95): a wraparound
+    // perimeter hoop, three horizontal bars, and a center vertical bar.
+    const maskMat = uniforms.facemask;
     const mask = new THREE.Mesh(
       new THREE.TorusGeometry(0.22, 0.035, 6, 14, Math.PI),
       maskMat
@@ -469,16 +748,24 @@
     mask.position.set(0, helmetY - 0.1, 0.36);
     mask.rotation.x = Math.PI / 2;
     g.add(mask);
-    // Two horizontal facemask bars for more "cage" detail.
-    for (const yOff of [-0.08, 0.06]) {
+    // Three horizontal cage bars.
+    for (const yOff of [-0.13, -0.04, 0.06]) {
       const bar = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.018, 0.018, 0.28, 6),
+        new THREE.CylinderGeometry(0.018, 0.018, 0.30, 6),
         maskMat
       );
       bar.rotation.z = Math.PI / 2;
       bar.position.set(0, helmetY - 0.1 + yOff, 0.42);
       g.add(bar);
     }
+    // Center vertical bar tying the cage to the shell.
+    const vBar = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.016, 0.016, 0.26, 6),
+      maskMat
+    );
+    vBar.position.set(0, helmetY - 0.12, 0.43);
+    vBar.rotation.x = 0.18;
+    g.add(vBar);
     // Chin strap
     const strap = new THREE.Mesh(
       new THREE.TorusGeometry(0.2, 0.018, 4, 10, Math.PI * 0.9),
@@ -499,8 +786,19 @@
       g.add(logo);
     }
 
-    // Apply overall height scaling to the whole figure (feet remain on ground).
-    g.scale.y = scaleY;
+    // ---- PHASE 7: three-level LOD ----
+    // Level 0 (near):  the full articulated PBR rig above.
+    // Level 1 (mid):   ~150-tri team-colored stand-in, no shadows.
+    // Level 2 (far):   billboard sprite.
+    // The renderer swaps levels automatically; the animation system skips
+    // rig math whenever level 0 isn't the visible child.
+    const lod = new THREE.LOD();
+    lod.addLevel(g, GC.lod.full);
+    lod.addLevel(buildSimpleLOD(uniforms), GC.lod.simple);
+    lod.addLevel(buildBillboardLOD(uniforms), GC.lod.billboard);
+    // Overall height scaling on the LOD root so all levels agree
+    // (feet remain on the ground).
+    lod.scale.y = scaleY;
 
     // --- Derived attributes: weight + height shape speed/accel subtly ---
     const rating = player.overall || 60;
@@ -513,7 +811,8 @@
     const carryY = (torsoY + 0.15) * scaleY;
 
     return {
-      mesh: g, player, team: teamKey, role: null,
+      mesh: lod, player, team: teamKey, role: null,
+      rigRoot: g,
       baseSpeed: speed, accel,
       stamina: 100, rating,
       heightIn, weightLb,
@@ -528,6 +827,8 @@
         shoulderL: rigArms.L.shoulder, shoulderR: rigArms.R.shoulder,
         elbowL: rigArms.L.elbow, elbowR: rigArms.R.elbow,
       },
+      // References for the Phase-6 animation system.
+      parts: { torso },
       gaitPhase: 0,
     };
   }
@@ -565,9 +866,31 @@
     return { light: lightP, heavy: heavyP };
   };
 
+  // Object pooling: every player mesh for a game is built once here and
+  // reused for every play (placePlayer/hideAllPlayers toggle visibility —
+  // nothing is created or destroyed mid-game). When a new game rebuilds the
+  // pool, the previous pool's per-player materials and textures are
+  // disposed; geometries live in shared caches and are kept.
+  function disposeEnt(ent) {
+    ent.mesh.traverse((o) => {
+      if (!o.material) return;
+      const mats = Array.isArray(o.material) ? o.material : [o.material];
+      for (const m of mats) {
+        if (m.userData && m.userData.sharedLOD) continue; // cached LOD materials
+        // Only per-player number/name canvases are unique textures; the
+        // weave/grip normals are module-level singletons.
+        if (m.map && m.map !== _wovenTex && m.map !== _gripTex) m.map.dispose();
+        m.dispose();
+      }
+    });
+  }
+
   FB.buildTeamMeshes = function (teamKey) {
     const team = FB.teams[teamKey];
-    for (const p of FB.activePlayers[teamKey]) FB.scene.remove(p.mesh);
+    for (const p of FB.activePlayers[teamKey]) {
+      FB.scene.remove(p.mesh);
+      disposeEnt(p);
+    }
     FB.activePlayers[teamKey].length = 0;
     for (const pl of team.players) {
       const ent = createPlayerMesh(pl, teamKey);

@@ -14,7 +14,11 @@
     last = t;
     step(dt);
     FB.updateCrowd && FB.updateCrowd(t * 0.001);
-    if (FB.composer) {
+    // postfx.js owns the render (composer chain, quality benchmark, grass
+    // wind clock); plain renderer.render is the no-postfx fallback.
+    if (FB.renderFrame) {
+      FB.renderFrame(dt);
+    } else if (FB.composer) {
       FB.composer.render();
     } else if (FB.renderer && FB.scene && FB.camera) {
       FB.renderer.render(FB.scene, FB.camera);
