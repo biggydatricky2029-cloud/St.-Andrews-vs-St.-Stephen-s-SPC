@@ -782,8 +782,15 @@
 
     // Draw assignment indicators first (behind chips).
     for (const sp of spots) {
-      const a = assign[sp.slot];
+      let a = assign[sp.slot];
       if (!a) continue;
+      // Scheme calls (defense-ai.js) name zones / receivers; convert to the
+      // depth+lateral / role form this diagram draws.
+      if ((a.type === 'zone' || a.type === 'match') && a.depth == null && FB.schemeDiagramPoint) {
+        a = Object.assign({}, a, { type: 'zone' }, FB.schemeDiagramPoint(a));
+      } else if (a.type === 'man' && a.who && FB.schemeManTarget) {
+        a = Object.assign({}, a, { target: FB.schemeManTarget(a.who) });
+      }
       const p = fieldToSvg(sp.dx, sp.dz);
       if (a.type === 'rush' || a.type === 'blitz') {
         const color = a.type === 'blitz' ? '#ff3838' : '#ff8a4c';
@@ -814,7 +821,7 @@
   }
 
   // ---- Bootstrap ----
-  const BUILD_TAG = 'BUILD-20261107b';
+  const BUILD_TAG = 'BUILD-20261107c';
   function paintVersionTag() {
     try {
       const host = document.body;

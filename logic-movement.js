@@ -126,7 +126,12 @@
       } else if (OL_SLOTS.includes(ent.role)) {
         // Offensive line: actively seek out the nearest unblocked rusher and
         // wall them off, positioning between the rusher and the QB.
-        const nearest = FB.nearestDefender(ent.mesh.position, pos);
+        // Pass pro (defense-ai.js): each lineman blocks his assigned rusher;
+        // unassigned linemen hold the pocket. Runs keep the nearest-man rule.
+        const pp = FB.passProActive && FB.passProActive();
+        const nearest = pp
+          ? (ent._ppTarget ? { def: ent._ppTarget, dist: ent.mesh.position.distanceTo(ent._ppTarget.mesh.position) } : { def: null, dist: Infinity })
+          : FB.nearestDefender(ent.mesh.position, pos);
         if (nearest.def && nearest.dist < 7) {
           const d = nearest.def.mesh.position;
           const intercept = new THREE.Vector3(d.x - dir * 0.6, 0, d.z);
@@ -138,6 +143,10 @@
           const pocket = new THREE.Vector3(losX - dir * 1.2, 0, ent.mesh.position.z);
           steerToward(ent, pocket, dt, 0.45);
         }
+      } else if (ent._ppTarget && FB.passProActive && FB.passProActive()) {
+        // Back / TE staying in to protect picks up his assigned blitzer.
+        const d = ent._ppTarget.mesh.position;
+        steerToward(ent, new THREE.Vector3(d.x - dir * 0.6, 0, d.z), dt, 0.85);
       } else {
         const nearest = FB.nearestDefender(ent.mesh.position, pos);
         if (nearest.def && nearest.dist < 4) {

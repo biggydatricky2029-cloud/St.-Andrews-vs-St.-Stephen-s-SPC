@@ -112,6 +112,8 @@
   const BLOCKING = {
     // How often a blocker-defender pair re-rolls the matchup.
     rerollEverySec: 0.4,
+    // Chance an even OL/DL pairing holds each roll (defense-ai pass rush).
+    baseHold: 0.8,
     // Random noise added to each roll so outcomes aren't fully deterministic.
     rollNoise: 0.18,
     // Multiplier on shed velocity burst when defender wins a roll.

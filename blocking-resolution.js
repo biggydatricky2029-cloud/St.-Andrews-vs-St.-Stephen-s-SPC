@@ -45,9 +45,13 @@
     const dScore = dShed * 0.6 + dStr * 0.4;
 
     // Probabilistic outcome with bounded noise so a 99 vs 50 isn't impossible.
+    // Each roll is a real coin flip weighted by the matchup: an even pair
+    // holds ~75% of rolls (rolls every 0.4s → pressure in ~2-3s); a
+    // heavy-rush call (Tampa 2) or a big rating edge tilts it.
     const margin = (bScore - dScore) / 99;
-    const blockChance = 0.5 + margin * 0.5 + (Math.random() - 0.5) * B.rollNoise;
-    const blockWins = blockChance >= 0.5;
+    const heavy = defender.assignment && defender.assignment.heavy ? 0.07 : 0;
+    const holdP = Math.max(0.45, Math.min(0.9, B.baseHold + margin * 0.8 - heavy));
+    const blockWins = Math.random() < holdP;
     defender._blockMatch = {
       lastRollT: nowSec,
       blocker,
@@ -80,12 +84,21 @@
     for (const def of FB.activePlayers[defTeam] || []) {
       if (!def.mesh.visible || def.isDown) continue;
       const role = def.role;
-      const isRusher = ['LE', 'RE', 'DT', 'NT'].includes(role)
-        || (def.assignment && (def.assignment.type === 'rush' || def.assignment.type === 'blitz'));
+      // defense-ai.js tags each defender's live job in def._beh (a dropping
+      // end or a green-dog backer changes role after the snap).
+      const isRusher = def._beh ? (def._beh === 'rush' || def._beh === 'blitz')
+        : (['LE', 'RE', 'DT', 'NT'].includes(role)
+          || (def.assignment && (def.assignment.type === 'rush' || def.assignment.type === 'blitz')));
       if (!isRusher) continue;
+      // Just beat the block: free to get past the blocker for a moment.
+      if (def._shedUntil && nowSec < def._shedUntil) { def._blockMatch = null; continue; }
 
-      // Find the nearest unmatched offensive blocker within 2 yards.
-      const block = nearestBlocker(def, offTeam);
+      // On pass plays only the blocker assigned to this rusher can engage
+      // him, so an unaccounted-for blitzer comes through clean.
+      const pp = FB.passProActive && FB.passProActive();
+      const block = pp
+        ? (def._ppBlocker ? { blocker: def._ppBlocker, dist: def._ppBlocker.mesh.position.distanceTo(def.mesh.position) } : { blocker: null, dist: Infinity })
+        : nearestBlocker(def, offTeam);
       if (!block.blocker || block.dist > 2.2) {
         // Disengaged. Clear engagement state and let the existing pursuit
         // pipeline take over (untouched).
@@ -115,9 +128,15 @@
         def.mesh.position.x -= dir * dt * 0.6;
         def.blockedTime = (def.blockedTime || 0) + dt;
       } else {
-        // Shed: small celebratory burst toward the QB to break the engagement.
-        def.vel.x += dir * dt * def.accel * B.shedBurst * 0.6;
+        // Shed: burst past the blocker toward the QB (-dir is the offense's
+        // backfield) and stay free briefly so he isn't re-engaged instantly.
+        def.vel.x -= dir * def.accel * 0.12 * B.shedBurst;
         def.blockedTime = 0;
+        def._shedUntil = nowSec + 0.9;
+        def._blockMatch = null;
+        // The beaten blocker loses him and has to re-find someone.
+        if (block.blocker && block.blocker._ppTarget === def) block.blocker._ppTarget = null;
+        def._ppBlocker = null;
       }
     }
   }
