@@ -214,6 +214,7 @@
       return rPh;
     }
 
+    if (!player.positions || !player.positions.length) player.positions = ['ATH'];
     for (const pos of player.positions) {
       let raw = rateByPosition(pos, player, s, gp, teamContext);
       if (gp > 0 && gp < 6) {
@@ -272,7 +273,7 @@
     { slot: 'KR1', pos: null, isReturner: true },
     { slot: 'KR2', pos: null, isReturner: true },
     { slot: 'PR', pos: null, isReturner: true },
-    { slot: 'LS', pos: ['C', 'OL', 'TE'] },
+    { slot: 'LS', pos: ['LS', 'C', 'OL', 'TE'] },
     { slot: 'Gunner1', pos: ['CB', 'WR', 'S', 'FS', 'SS'] },
     { slot: 'Gunner2', pos: ['CB', 'WR', 'S', 'FS', 'SS'] },
   ];
@@ -303,25 +304,54 @@
     return candidates[0];
   }
 
+  // Fallback when no listed player plays a slot's position (stat-only
+  // rosters rarely list offensive linemen or kickers): use the best unused
+  // player from the same side of the ball, then anyone unused. Every
+  // fallback is recorded in lineup.notes so it shows on the pre-game screen.
+  function fallbackFor(slot, side, roster, used) {
+    const pool = roster.filter((p) => !used.has(p.number) && !isQuarterLocked(p) && !p._generated);
+    const sameSide = pool.filter((p) => p.positions.some((pp) => sideOf(pp) === side));
+    const list = sameSide.length ? sameSide : pool;
+    list.sort((a, b) => (b.overall || 0) - (a.overall || 0));
+    return list[0];
+  }
+
+  // Last resort for very small rosters: an unrated, clearly-labelled fill-in.
+  function makeFillIn(roster, slotName) {
+    let n = 99;
+    const taken = new Set(roster.map((p) => p.number));
+    while (taken.has(n) && n > 0) n--;
+    if (taken.has(n)) { n = 100; while (taken.has(n)) n++; }
+    const p = { number: n, name: 'Unlisted Player', class: null, positions: [slotName.replace(/[0-9]/g, '')],
+      height: null, weight: null, stats: { gp: 0, _placeholder: true }, _generated: true };
+    computeOverall(p, null);
+    roster.push(p);
+    return p;
+  }
+
   function assignLineup(teamRoster, teamContext) {
     // Two-way: player can appear once on O, once on D, plus ST.
     const usedOff = new Set(), usedDef = new Set(), usedST = new Set();
     const lineup = { OFF: {}, DEF: {}, ST: {}, notes: [] };
-
-    for (const slot of OFFENSE_SLOTS) {
-      const p = bestFor(slot, teamRoster, usedOff, teamContext);
-      if (p) { lineup.OFF[slot.slot] = p.number; usedOff.add(p.number); }
-      else lineup.notes.push(`OFF ${slot.slot}: no eligible player — promoting placeholder.`);
-    }
-    for (const slot of DEFENSE_SLOTS) {
-      const p = bestFor(slot, teamRoster, usedDef, teamContext);
-      if (p) { lineup.DEF[slot.slot] = p.number; usedDef.add(p.number); }
-      else lineup.notes.push(`DEF ${slot.slot}: no eligible player — promoting placeholder.`);
-    }
-    for (const slot of ST_SLOTS) {
-      const p = bestFor(slot, teamRoster, usedST, teamContext);
-      if (p) { lineup.ST[slot.slot] = p.number; usedST.add(p.number); }
-      else lineup.notes.push(`ST ${slot.slot}: no eligible player.`);
+    const groups = [['OFF', OFFENSE_SLOTS, usedOff], ['DEF', DEFENSE_SLOTS, usedDef], ['ST', ST_SLOTS, usedST]];
+    for (const [side, slots, used] of groups) {
+      for (const slot of slots) {
+        let p = bestFor(slot, teamRoster, used, teamContext);
+        if (!p && side !== 'ST') {
+          p = fallbackFor(slot, side, teamRoster, used);
+          if (p) lineup.notes.push(`${side} ${slot.slot}: no listed ${slot.pos.join('/')} — #${p.jersey != null ? p.jersey : p.number} ${p.name} fills in out of position.`);
+          else {
+            p = makeFillIn(teamRoster, slot.slot);
+            lineup.notes.push(`${side} ${slot.slot}: roster too small — unrated "Unlisted Player" fills in.`);
+          }
+        } else if (!p) {
+          p = fallbackFor(slot, side, teamRoster, used);
+          if (p) lineup.notes.push(`ST ${slot.slot}: no listed ${slot.pos ? slot.pos.join('/') : 'returner'} — #${p.jersey != null ? p.jersey : p.number} ${p.name} fills in.`);
+          else { lineup.notes.push(`ST ${slot.slot}: no eligible player.`); continue; }
+        }
+        lineup[side][slot.slot] = p.number;
+        used.add(p.number);
+      }
     }
     return lineup;
   }

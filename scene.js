@@ -77,6 +77,20 @@ window.FB = window.FB || {};
   FB.teams = { home: null, away: null };
   FB.lineups = { home: null, away: null };
 
+  // End-zone / crowd / jumbotron art for a side. St. Andrew's and
+  // St. Stephen's keep their original art; every other school uses a
+  // neutral PLACEHOLDER until real colors and logos are supplied.
+  const TEAM_ART = {
+    'st-andrews':  { ez: '#0a2463', ezText: '#ffffff', crowd: 0x0a2463 },
+    'st-stephens': { ez: '#b22222', ezText: '#ffd700', crowd: 0xb22222 },
+  };
+  const PLACEHOLDER_ART = { ez: '#3a3f4b', ezText: '#e5e7eb', crowd: 0x6b7280 };
+  FB.teamArt = function (side) {
+    const t = FB.teams[side] || {};
+    const art = TEAM_ART[t.id] || PLACEHOLDER_ART;
+    return Object.assign({ label: String(t.shortName || (side === 'home' ? 'HOME' : 'AWAY')).toUpperCase() }, art);
+  };
+
   // ---- yard/X math ----
   // Field: X axis -60..60 (120 yards incl. end zones). Home end zone: X -60..-50. Away: 50..60.
   // ballOn is 0..100 relative to possession: 0 = own goal line, 100 = opp goal line.
@@ -502,7 +516,12 @@ window.FB = window.FB || {};
     g.addColorStop(1, 'rgba(0,0,0,0.25)');
     ctx.fillStyle = g; ctx.fillRect(0, 0, c.width, c.height);
     ctx.fillStyle = secondary;
-    ctx.font = 'bold 160px system-ui, -apple-system, Helvetica, sans-serif';
+    // Shrink long team names so they fit sideline to sideline.
+    let fs = 160;
+    ctx.font = 'bold ' + fs + 'px system-ui, -apple-system, Helvetica, sans-serif';
+    while (fs > 60 && ctx.measureText(label.toUpperCase()).width > c.height * 0.92) {
+      fs -= 8; ctx.font = 'bold ' + fs + 'px system-ui, -apple-system, Helvetica, sans-serif';
+    }
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.save();
     ctx.translate(c.width / 2, c.height / 2);
@@ -591,7 +610,7 @@ window.FB = window.FB || {};
     const homeEZGeo = drapeOnCrown(new THREE.PlaneGeometry(EZ, FIELD_WID, 1, 24), 0, 0.012);
     const homeEZ = new THREE.Mesh(homeEZGeo,
       new THREE.MeshStandardMaterial({
-        map: endZoneTexture('HIGHLANDERS', '#0a2463', '#ffffff'),
+        map: endZoneTexture(FB.teamArt('home').label, FB.teamArt('home').ez, FB.teamArt('home').ezText),
         roughness: 0.9, metalness: 0.0,
         polygonOffset: true, polygonOffsetFactor: -1,
       }));
@@ -599,7 +618,7 @@ window.FB = window.FB || {};
     homeEZ.receiveShadow = true; group.add(homeEZ);
     const awayEZ = new THREE.Mesh(homeEZGeo.clone(),
       new THREE.MeshStandardMaterial({
-        map: endZoneTexture('SPARTANS', '#b22222', '#ffd700'),
+        map: endZoneTexture(FB.teamArt('away').label, FB.teamArt('away').ez, FB.teamArt('away').ezText),
         roughness: 0.9, metalness: 0.0,
         polygonOffset: true, polygonOffsetFactor: -1,
       }));
@@ -936,8 +955,8 @@ window.FB = window.FB || {};
     crowd.castShadow = false; crowd.receiveShadow = false;
     crowd.frustumCulled = false; // bowl is wide; keep it drawing
 
-    const HOME_COLOR = new THREE.Color(0x0a2463);  // Highlanders navy
-    const AWAY_COLOR = new THREE.Color(0xb22222);  // Spartans crimson
+    const HOME_COLOR = new THREE.Color(FB.teamArt('home').crowd);
+    const AWAY_COLOR = new THREE.Color(FB.teamArt('away').crowd);
     const NEUTRAL = [
       0xf0b400, 0xffffff, 0x333333, 0x8a6d3b, 0xcccccc,
       0x2e7d57, 0x7a3a3a, 0x444c5c, 0xddb15a,
@@ -1058,16 +1077,20 @@ window.FB = window.FB || {};
     jctx.strokeStyle = '#ffcc00'; jctx.lineWidth = 10;
     jctx.strokeRect(10, 10, 1004, 492);
     // Team line
+    const fitJumbo = (txt) => {
+      let fs = 110; jctx.font = 'bold ' + fs + 'px system-ui, sans-serif';
+      while (fs > 40 && jctx.measureText(txt).width > 960) { fs -= 6; jctx.font = 'bold ' + fs + 'px system-ui, sans-serif'; }
+    };
     jctx.fillStyle = '#4cc9f0';
-    jctx.font = 'bold 110px system-ui, sans-serif';
     jctx.textAlign = 'center';
-    jctx.fillText('HIGHLANDERS', 512, 170);
+    fitJumbo(FB.teamArt('home').label);
+    jctx.fillText(FB.teamArt('home').label, 512, 170);
     jctx.fillStyle = '#ffffff';
     jctx.font = 'bold 70px system-ui, sans-serif';
     jctx.fillText('vs', 512, 270);
     jctx.fillStyle = '#ff4d4d';
-    jctx.font = 'bold 110px system-ui, sans-serif';
-    jctx.fillText('SPARTANS', 512, 400);
+    fitJumbo(FB.teamArt('away').label);
+    jctx.fillText(FB.teamArt('away').label, 512, 400);
     const jumboTex = new THREE.CanvasTexture(jumboCanvas);
     jumboTex.encoding = THREE.sRGBEncoding;
     jumboTex.anisotropy = 8;

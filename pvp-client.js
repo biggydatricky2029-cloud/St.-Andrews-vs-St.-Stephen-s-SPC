@@ -35,7 +35,7 @@ function pvpHostReady() {
 const pvp = {
   socket       : null,
   roomCode     : null,
-  myTeam       : null,      // 'highlanders' or 'spartans'
+  myTeam       : null,      // team key '<season>|<teamId>', e.g. '2026-27|st-andrews'
   myName       : null,
   isHost       : false,
   opponentName : null,
@@ -145,6 +145,11 @@ function injectPvPStyles() {
     }
     .pvp-team-btn.selected { border-color: #4fc3f7; background: #1a3a5c; }
     .pvp-team-btn .team-emoji { font-size: 2rem; display: block; margin-bottom: 6px; }
+    .pvp-team-pick { flex-direction: column; gap: 8px; margin: 8px 0 16px; }
+    .pvp-select {
+      width: 100%; padding: 10px; border-radius: 8px; border: 2px solid #1e3a5f;
+      background: #0d1b2a; color: #fff; font-size: 0.95rem; box-sizing: border-box;
+    }
 
     .pvp-lobby-players {
       display: flex;
@@ -286,14 +291,10 @@ function injectPvPHTML() {
       <div class="pvp-subtitle">Share the code with your friend</div>
       <label style="font-size:0.85rem;color:#90caf9">Your Name</label>
       <input class="pvp-input" id="pvp-create-name" maxlength="16" placeholder="Enter name" style="letter-spacing:1px">
-      <label style="font-size:0.85rem;color:#90caf9">Pick Your Team</label>
-      <div class="pvp-team-row">
-        <button class="pvp-team-btn" id="team-btn-highlanders" data-team="highlanders">
-          <span class="team-emoji">A</span>Highlanders
-        </button>
-        <button class="pvp-team-btn" id="team-btn-spartans" data-team="spartans">
-          <span class="team-emoji">S</span>Spartans
-        </button>
+      <label style="font-size:0.85rem;color:#90caf9">Pick Your Team (any of the last 3 seasons)</label>
+      <div class="pvp-team-row pvp-team-pick" data-ctx="create">
+        <select class="pvp-select" id="pvp-create-season" data-role="season" data-ctx="create"></select>
+        <select class="pvp-select" id="pvp-create-team" data-role="team" data-ctx="create"></select>
       </div>
       <button class="pvp-btn green" data-action="create-room">Create Room</button>
       <button class="pvp-btn gray"  data-action="show-mode">Back</button>
@@ -306,14 +307,10 @@ function injectPvPHTML() {
       <input class="pvp-input" id="pvp-join-name" maxlength="16" placeholder="Enter name" style="letter-spacing:1px">
       <label style="font-size:0.85rem;color:#90caf9">Room Code</label>
       <input class="pvp-input" id="pvp-join-code" maxlength="6" placeholder="ABC123">
-      <label style="font-size:0.85rem;color:#90caf9">Pick Your Team</label>
-      <div class="pvp-team-row">
-        <button class="pvp-team-btn" id="team-btn-join-highlanders" data-team="highlanders" data-context="join">
-          <span class="team-emoji">A</span>Highlanders
-        </button>
-        <button class="pvp-team-btn" id="team-btn-join-spartans" data-team="spartans" data-context="join">
-          <span class="team-emoji">S</span>Spartans
-        </button>
+      <label style="font-size:0.85rem;color:#90caf9">Pick Your Team (any of the last 3 seasons)</label>
+      <div class="pvp-team-row pvp-team-pick" data-ctx="join">
+        <select class="pvp-select" id="pvp-join-season" data-role="season" data-ctx="join"></select>
+        <select class="pvp-select" id="pvp-join-team" data-role="team" data-ctx="join"></select>
       </div>
       <button class="pvp-btn green" data-action="join-room">Join Room</button>
       <button class="pvp-btn gray"  data-action="show-mode">Back</button>
@@ -355,6 +352,20 @@ function injectPvPHTML() {
       <button class="pvp-btn red" data-action="disconnect">Leave Room</button>
     </div>
 
+    <div class="pvp-card" id="pvp-screen-queue-setup" style="display:none">
+      <div class="pvp-title">Public Matchmaking</div>
+      <div class="pvp-subtitle">Your opponent picks their own team</div>
+      <label style="font-size:0.85rem;color:#90caf9">Your Name</label>
+      <input class="pvp-input" id="pvp-queue-name" maxlength="16" placeholder="Enter name" style="letter-spacing:1px">
+      <label style="font-size:0.85rem;color:#90caf9">Pick Your Team (any of the last 3 seasons)</label>
+      <div class="pvp-team-row pvp-team-pick" data-ctx="queue">
+        <select class="pvp-select" id="pvp-queue-season" data-role="season" data-ctx="queue"></select>
+        <select class="pvp-select" id="pvp-queue-team" data-role="team" data-ctx="queue"></select>
+      </div>
+      <button class="pvp-btn green" data-action="start-queue">Find Opponent</button>
+      <button class="pvp-btn gray"  data-action="show-mode">Back</button>
+    </div>
+
     <div class="pvp-card" id="pvp-screen-queue" style="display:none">
       <div class="pvp-title">Matchmaking</div>
       <div class="pvp-subtitle">Looking for an opponent...</div>
@@ -367,14 +378,11 @@ function injectPvPHTML() {
 
   // Wire up overlay actions via delegation (avoids inline onclick globals).
   overlay.addEventListener('click', (e) => {
-    const t = e.target.closest('[data-action], [data-team]');
+    const t = e.target.closest('[data-action]');
     if (!t) return;
-    if (t.dataset.team) {
-      selectTeam(t.dataset.team, t.dataset.context || null);
-      return;
-    }
     switch (t.dataset.action) {
-      case 'queue':       pvpStartPublicQueue(); break;
+      case 'queue':       showScreen('queue-setup'); break;
+      case 'start-queue': pvpStartPublicQueue(); break;
       case 'show-create': showScreen('create-room'); break;
       case 'show-join':   showScreen('join-room'); break;
       case 'show-mode':   showScreen('mode-select'); break;
@@ -388,6 +396,11 @@ function injectPvPHTML() {
       case 'leave-queue': pvpLeaveQueue(); break;
     }
   });
+  overlay.addEventListener('change', (e) => {
+    const sel = e.target.closest('select[data-role="season"]');
+    if (sel) pvpFillTeams(sel.dataset.ctx);
+  });
+  for (const ctx of ['create', 'join', 'queue']) pvpFillSeasons(ctx);
   const chatInput = document.getElementById('pvp-chat-input');
   chatInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') pvpSendChat(); });
 
@@ -414,6 +427,9 @@ function showScreen(screenId) {
   overlay.querySelectorAll('.pvp-card').forEach(s => { s.style.display = 'none'; });
   const target = document.getElementById('pvp-screen-' + screenId);
   if (target) target.style.display = 'block';
+  if (screenId === 'create-room') pvpFillSeasons('create');
+  if (screenId === 'join-room') pvpFillSeasons('join');
+  if (screenId === 'queue-setup') pvpFillSeasons('queue');
 }
 
 function closePvP() {
@@ -427,19 +443,37 @@ function closePvPAbandoned() {
   closePvP();
 }
 
-let _selectedTeam     = null;
-let _selectedTeamJoin = null;
-
-function selectTeam(team, context) {
-  if (context === 'join') {
-    _selectedTeamJoin = team;
-    document.getElementById('team-btn-join-highlanders').classList.toggle('selected', team === 'highlanders');
-    document.getElementById('team-btn-join-spartans').classList.toggle('selected', team === 'spartans');
-  } else {
-    _selectedTeam = team;
-    document.getElementById('team-btn-highlanders').classList.toggle('selected', team === 'highlanders');
-    document.getElementById('team-btn-spartans').classList.toggle('selected', team === 'spartans');
+// Team picks are "<season>|<teamId>" keys from data/seasons.json, so each
+// player can choose any team from any of the three seasons.
+function pvpFillSeasons(ctx) {
+  const FB = window.FB;
+  const sel = document.getElementById('pvp-' + ctx + '-season');
+  if (!sel || !FB || !FB.seasons || !FB.seasons.length) return;
+  if (!sel.options.length) {
+    sel.innerHTML = FB.seasons.map(s => '<option value="' + s.id + '">' + escapeHtml(s.label) + '</option>').join('');
   }
+  pvpFillTeams(ctx);
+}
+function pvpFillTeams(ctx) {
+  const FB = window.FB;
+  const ss = document.getElementById('pvp-' + ctx + '-season');
+  const ts = document.getElementById('pvp-' + ctx + '-team');
+  if (!ss || !ts || !FB || !FB.seasons) return;
+  const season = FB.seasons.find(s => s.id === ss.value) || FB.seasons[0];
+  if (!season) return;
+  const prev = ts.value;
+  ts.innerHTML = season.teams.map(t => '<option value="' + t.id + '">' + escapeHtml(t.teamName) + '</option>').join('');
+  if (season.teams.some(t => t.id === prev)) ts.value = prev;
+}
+function pvpSelectedTeam(ctx) {
+  pvpFillSeasons(ctx); // in case season data loaded after the overlay was built
+  const ss = document.getElementById('pvp-' + ctx + '-season');
+  const ts = document.getElementById('pvp-' + ctx + '-team');
+  if (!ss || !ts || !ss.value || !ts.value) return null;
+  return ss.value + '|' + ts.value;
+}
+function pvpTeamLabel(key) {
+  return (window.FB && FB.teamLabel) ? FB.teamLabel(key) : String(key || '--');
 }
 
 function copyRoomCode() {
@@ -455,7 +489,7 @@ function copyRoomCode() {
 function pvpCreateRoom() {
   if (!pvpHostReady()) return;
   const name = document.getElementById('pvp-create-name').value.trim() || 'Player 1';
-  const team = _selectedTeam;
+  const team = pvpSelectedTeam('create');
   if (!team) { alert('Please pick a team first!'); return; }
 
   pvp.roomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -468,7 +502,7 @@ function pvpJoinRoom() {
   if (!pvpHostReady()) return;
   const name = document.getElementById('pvp-join-name').value.trim() || 'Player 2';
   const code = document.getElementById('pvp-join-code').value.trim().toUpperCase();
-  const team = _selectedTeamJoin;
+  const team = pvpSelectedTeam('join');
   if (!code || code.length < 4) { alert('Enter a valid room code.'); return; }
   if (!team) { alert('Please pick a team first!'); return; }
 
@@ -484,6 +518,10 @@ function pvpJoinRoom() {
 // ============================================================
 function pvpStartPublicQueue() {
   if (!pvpHostReady()) return;
+  const team = pvpSelectedTeam('queue');
+  if (!team) { alert('Please pick a team first!'); return; }
+  pvp.myTeam = team;
+  pvp.myName = document.getElementById('pvp-queue-name').value.trim() || pvp.myName || 'Player';
   showScreen('queue');
   document.getElementById('queue-status').textContent = 'Searching for opponent...';
 
@@ -492,13 +530,14 @@ function pvpStartPublicQueue() {
     pvp.queueSocket.send(JSON.stringify({
       type      : 'join_queue',
       playerName: pvp.myName || 'Player',
+      team      : pvp.myTeam,
     }));
   };
   pvp.queueSocket.onmessage = (e) => {
     const msg = JSON.parse(e.data);
     if (msg.type === 'matched') {
       pvp.roomCode = msg.roomCode;
-      pvp.myTeam   = msg.team;
+      // Matched players keep the team they picked before queueing.
       pvp.myName   = pvp.myName || 'Player';
       pvp.queueSocket.close();
       pvpConnect(msg.roomCode, pvp.myName, pvp.myTeam);
@@ -526,8 +565,7 @@ function pvpConnect(roomCode, playerName, team) {
   showScreen('lobby');
   document.getElementById('pvp-room-code-text').textContent = roomCode;
   document.getElementById('lobby-my-name').textContent = playerName;
-  document.getElementById('lobby-my-team').textContent =
-    team === 'highlanders' ? 'Highlanders' : 'Spartans';
+  document.getElementById('lobby-my-team').textContent = pvpTeamLabel(team);
   document.getElementById('lobby-status').textContent = 'Connecting...';
 
   pvp.socket = new WebSocket('wss://' + PARTYKIT_HOST + '/party/' + roomCode);
@@ -572,7 +610,7 @@ function pvpHandleMessage(msg) {
       if (opponent) {
         const sameTeam = me && opponent.team === me.team;
         const teamLabel = (t, mine) => {
-          const base = t === 'highlanders' ? 'Highlanders' : 'Spartans';
+          const base = pvpTeamLabel(t);
           // When both players pick the same team, the SECOND joiner gets
           // the dark uniform. The lobby doesn't know joinOrder, so we
           // approximate: whoever is "you" in a same-team room is shown
@@ -597,7 +635,7 @@ function pvpHandleMessage(msg) {
               : (opponent.ready
                   ? 'Opponent is ready -- ready up when set.'
                   : (sameTeam
-                      ? 'Same team! One side will wear dark uniforms. Ready up when set.'
+                      ? 'Same team and season! One side will wear dark uniforms. Ready up when set.'
                       : 'Opponent joined! Ready up when set.')));
       } else {
         document.getElementById('lobby-opp-name').textContent = 'Waiting...';
@@ -729,39 +767,19 @@ function pvpStartLocalGame(team, isHost) {
 // color so the two are visually distinguishable on the field.
 function applyPvPTeamAssignments() {
   const FB = window.FB;
-  if (!FB || !FB.teams) return;
+  if (!FB || !FB.teams || !FB.setMatchup) return;
   const me  = pvp.myAssignment;
   const opp = pvp.opponentAssignment;
   if (!me || !opp) {
-    // Fallback: legacy path that just sets userTeam.
-    FB.userTeam = (pvp.myTeam === 'spartans') ? 'away' : 'home';
+    // Fallback: no server assignments — play my team at home.
+    FB.userTeam = 'home';
     return;
   }
-
-  // If both players are on the same team, clone the source team data into
-  // the other side slot so the engine has 22 distinct entities to render.
-  if (me.team === opp.team) {
-    const sourceKey = (me.team === 'highlanders') ? 'home' : 'away';
-    const otherKey  = sourceKey === 'home' ? 'away' : 'home';
-    const cloneTeam = JSON.parse(JSON.stringify(FB.teams[sourceKey]));
-    FB.teams[otherKey] = cloneTeam;
-    if (FB.lineups) FB.lineups[otherKey] = JSON.parse(JSON.stringify(FB.lineups[sourceKey]));
-  }
-
-  // Apply alt colors -- swap primary to near-black, keep secondary as-is so
-  // numbers/lettering stay light blue against the dark jersey.
-  for (const a of [me, opp]) {
-    if (a.altColors && FB.teams[a.side]) {
-      FB.teams[a.side].primaryColor = '#0a0a0a';
-    }
-  }
-
-  // Refresh the HUD logo letters in case team data changed.
-  const logoHome = document.getElementById('logoHome');
-  const logoAway = document.getElementById('logoAway');
-  if (logoHome && FB.teams.home) logoHome.textContent = FB.teams.home.initial || 'H';
-  if (logoAway && FB.teams.away) logoAway.textContent = FB.teams.away.initial || 'A';
-
+  const home = me.side === 'home' ? me : opp;
+  const away = me.side === 'home' ? opp : me;
+  // setMatchup loads both picks (any season) into the home/away slots and
+  // gives the away side dark jerseys if both would wear the same color.
+  FB.setMatchup(home.team, away.team);
   FB.userTeam = me.side;
 }
 

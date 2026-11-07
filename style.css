@@ -196,3 +196,12 @@ html, body {
   .btn-col { grid-template-columns: repeat(2, 60px); }
   .act-btn { width: 60px; height: 42px; font-size: 11px; }
 }
+
+/* Season / team matchup picker */
+.pg-matchup { display: flex; flex-wrap: wrap; align-items: stretch; justify-content: center; gap: 12px; margin: 10px 0 6px; }
+.pg-pick-col { display: flex; flex-direction: column; gap: 8px; flex: 1 1 240px; max-width: 360px; background: rgba(255,255,255,0.04); border: 1px solid var(--hud-border); border-radius: 10px; padding: 10px 12px; }
+.pg-pick-col .pg-sel { justify-content: space-between; }
+.pg-pick-col .pg-sel select { flex: 1; min-width: 0; max-width: 240px; }
+.pg-pick-vs { align-self: center; font-weight: 800; opacity: 0.7; }
+.pg-logo { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; margin-right: 8px; font-size: 15px; background: rgba(255,255,255,0.12); border: 1px solid var(--hud-border); vertical-align: middle; }
+.pg-logo.placeholder { border-style: dashed; opacity: 0.8; }

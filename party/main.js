@@ -93,7 +93,7 @@ export default class FootballRoom {
         if (!this.players[sender.id]) {
           this.players[sender.id] = {
             name: String(data.playerName || 'Player').slice(0, 16),
-            team: data.team === 'spartans' ? 'spartans' : 'highlanders',
+            team: sanitizeTeam(data.team),
             ready: false,
             joinOrder: this.joinCounter++,
           };
@@ -166,23 +166,14 @@ export default class FootballRoom {
     const [hostId, guestId] = ids;
     const hostP  = this.players[hostId];
     const guestP = this.players[guestId];
+    // Host plays at home, guest away. Teams are any "<season>|<teamId>" key,
+    // so the two picks can come from different seasons. Same exact pick →
+    // guest wears alternate (dark) colors.
     const sameTeam = hostP.team === guestP.team;
 
     const assignments = [
-      {
-        playerId   : hostId,
-        name       : hostP.name,
-        team       : hostP.team,
-        side       : sameTeam ? 'home' : (hostP.team === 'highlanders' ? 'home' : 'away'),
-        altColors  : false,
-      },
-      {
-        playerId   : guestId,
-        name       : guestP.name,
-        team       : guestP.team,
-        side       : sameTeam ? 'away' : (guestP.team === 'highlanders' ? 'home' : 'away'),
-        altColors  : sameTeam,
-      },
+      { playerId: hostId,  name: hostP.name,  team: hostP.team,  side: 'home', altColors: false },
+      { playerId: guestId, name: guestP.name, team: guestP.team, side: 'away', altColors: sameTeam },
     ];
 
     this.broadcast({ type: 'game_start', hostId, assignments });
@@ -208,22 +199,16 @@ export default class FootballRoom {
       this.queueWaiting.push({
         id: sender.id,
         name: String(data.playerName || 'Player').slice(0, 16),
+        team: sanitizeTeam(data.team),
       });
 
       while (this.queueWaiting.length >= 2) {
         const p1 = this.queueWaiting.shift();
         const p2 = this.queueWaiting.shift();
         const code = randomCode();
-        // Random team split for matched players.
-        const flip = Math.random() < 0.5;
-        this.sendToConn(p1.id, {
-          type: 'matched', roomCode: code,
-          team: flip ? 'highlanders' : 'spartans',
-        });
-        this.sendToConn(p2.id, {
-          type: 'matched', roomCode: code,
-          team: flip ? 'spartans' : 'highlanders',
-        });
+        // Each matched player keeps the team they picked before queueing.
+        this.sendToConn(p1.id, { type: 'matched', roomCode: code, team: p1.team });
+        this.sendToConn(p2.id, { type: 'matched', roomCode: code, team: p2.team });
       }
       this.broadcastQueuePositions();
     }
@@ -262,4 +247,11 @@ export default class FootballRoom {
 
 function randomCode() {
   return Math.random().toString(36).substring(2, 8).toUpperCase();
+}
+
+// Team keys look like "2026-27|st-andrews". Anything else falls back to
+// St. Andrew's in the newest season.
+function sanitizeTeam(t) {
+  const s = String(t || '');
+  return /^\d{4}-\d{2}\|[a-z0-9-]{1,40}$/.test(s) ? s : '2026-27|st-andrews';
 }

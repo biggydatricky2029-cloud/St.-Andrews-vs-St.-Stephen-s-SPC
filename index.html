@@ -6,28 +6,42 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="theme-color" content="#0a2463" />
-  <title>Highlanders vs Spartans — 3D Football</title>
+  <title>SPC 3A Football — 3D Football</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <!-- Pre-game screen -->
   <div id="preGame" class="screen">
     <div class="pg-header">
-      <div class="pg-title">Highlanders <span class="pg-vs">vs</span> Spartans</div>
+      <div class="pg-title" id="pgTitle">SPC 3A Football</div>
       <div class="pg-sub">3D Football — Original Edition</div>
+    </div>
+    <div class="pg-matchup">
+      <div class="pg-pick-col">
+        <div class="pg-pick-label">You play as</div>
+        <label class="pg-sel">Season
+          <select id="pgUserSeason"></select>
+        </label>
+        <label class="pg-sel">Team
+          <select id="pgUserTeam"></select>
+        </label>
+      </div>
+      <div class="pg-pick-vs">vs</div>
+      <div class="pg-pick-col">
+        <div class="pg-pick-label">Opponent</div>
+        <label class="pg-sel">Season
+          <select id="pgOppSeason"></select>
+        </label>
+        <label class="pg-sel">Team
+          <select id="pgOppTeam"></select>
+        </label>
+      </div>
     </div>
     <div class="pg-teams">
       <div class="pg-team" id="pgHome"></div>
       <div class="pg-team" id="pgAway"></div>
     </div>
     <div class="pg-notes" id="pgNotes"></div>
-    <div class="pg-team-pick">
-      <div class="pg-pick-label">You play as:</div>
-      <button class="team-pick-btn active locked" id="pickHome" data-team="home" disabled>
-        <span class="tp-logo tp-home">A</span>St. Andrew's Highlanders
-      </button>
-      <div class="pg-pick-note">St. Stephen's is always the opponent.</div>
-    </div>
     <div class="pg-actions">
       <label class="pg-sel">Quarter length:
         <select id="pgQuarterLen">
@@ -149,8 +163,8 @@
         </div>
         <div class="tab-panel hidden" id="tabSubs">
           <div class="sub-team-tabs">
-            <button class="sub-team-btn active" data-team="home">Highlanders</button>
-            <button class="sub-team-btn" data-team="away">Spartans</button>
+            <button class="sub-team-btn active" data-team="home" id="subBtnHome">Your Team</button>
+            <button class="sub-team-btn" data-team="away" id="subBtnAway">Opponent</button>
           </div>
           <div id="subList" class="sub-list"></div>
         </div>
@@ -193,32 +207,32 @@
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/BokehShader.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/BokehPass.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/objects/Lensflare.js"></script>
-  <script src="graphics-config.js?v=20260612c"></script>
-  <script src="systems-config.js?v=20260612c"></script>
-  <script src="ratings.js?v=20260612c"></script>
-  <script src="playbook.js?v=20260612c"></script>
-  <script src="scene.js?v=20260612c"></script>
-  <script src="postfx.js?v=20260612c"></script>
-  <script src="players.js?v=20260612c"></script>
-  <script src="player-visuals-upgrade.js?v=20260612c"></script>
-  <script src="kickSwipeUI.js?v=20260612c"></script>
-  <script src="controls.js?v=20260612c"></script>
-  <script src="logic-movement.js?v=20260612c"></script>
-  <script src="logic-play.js?v=20260612c"></script>
-  <script src="logic-special.js?v=20260612c"></script>
-  <script src="logic-clock.js?v=20260612c"></script>
-  <script src="logic-loop.js?v=20260612c"></script>
+  <script src="graphics-config.js?v=20261107a"></script>
+  <script src="systems-config.js?v=20261107a"></script>
+  <script src="ratings.js?v=20261107a"></script>
+  <script src="playbook.js?v=20261107a"></script>
+  <script src="scene.js?v=20261107a"></script>
+  <script src="postfx.js?v=20261107a"></script>
+  <script src="players.js?v=20261107a"></script>
+  <script src="player-visuals-upgrade.js?v=20261107a"></script>
+  <script src="kickSwipeUI.js?v=20261107a"></script>
+  <script src="controls.js?v=20261107a"></script>
+  <script src="logic-movement.js?v=20261107a"></script>
+  <script src="logic-play.js?v=20261107a"></script>
+  <script src="logic-special.js?v=20261107a"></script>
+  <script src="logic-clock.js?v=20261107a"></script>
+  <script src="logic-loop.js?v=20261107a"></script>
   <!-- SYSTEMS UPGRADE — must load AFTER engine modules so they can wrap
        FB.* hooks (snapBall, updateDefense, endPlay, attemptTackle, etc). -->
-  <script src="attribute-system.js?v=20260612c"></script>
-  <script src="blocking-resolution.js?v=20260612c"></script>
-  <script src="coverage-ai.js?v=20260612c"></script>
-  <script src="stamina-system.js?v=20260612c"></script>
-  <script src="crowd-reactions.js?v=20260612c"></script>
-  <script src="animation.js?v=20260612c"></script>
-  <script src="camera-broadcast.js?v=20260612c"></script>
-  <script src="ui.js?v=20260612c"></script>
-  <script src="pvp-client.js?v=20260612c"></script>
-  <script src="pvp-state-sync.js?v=20260612c"></script>
+  <script src="attribute-system.js?v=20261107a"></script>
+  <script src="blocking-resolution.js?v=20261107a"></script>
+  <script src="coverage-ai.js?v=20261107a"></script>
+  <script src="stamina-system.js?v=20261107a"></script>
+  <script src="crowd-reactions.js?v=20261107a"></script>
+  <script src="animation.js?v=20261107a"></script>
+  <script src="camera-broadcast.js?v=20261107a"></script>
+  <script src="ui.js?v=20261107a"></script>
+  <script src="pvp-client.js?v=20261107a"></script>
+  <script src="pvp-state-sync.js?v=20261107a"></script>
 </body>
 </html>

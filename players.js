@@ -460,7 +460,7 @@
       primaryColor: '#' + primary.getHexString(),
       secondaryColor: secondaryHex,
       skinTone: skinToneFor(player),
-      jerseyNumber: player.number,
+      jerseyNumber: player.jersey != null ? player.jersey : player.number,
       lastName: (player.name || '').split(' ').slice(-1)[0],
       playerPosition: player.position || '',
       variant: 'home',

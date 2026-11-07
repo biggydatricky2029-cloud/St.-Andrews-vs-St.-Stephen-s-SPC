@@ -177,7 +177,8 @@
     document.getElementById('hudClock').textContent = m + ':' + (sec < 10 ? '0' + sec : sec);
     const ord = ['1st','2nd','3rd','4th'][s.down - 1] || s.down + 'th';
     document.getElementById('hudDnD').textContent = ord + ' & ' + s.distance;
-    const side = s.ballOn < 50 ? (s.possession === 'home' ? 'A' : 'S') : (s.possession === 'home' ? 'S' : 'A');
+    const hI = (FB.teams.home && FB.teams.home.initial) || 'H', aI = (FB.teams.away && FB.teams.away.initial) || 'A';
+    const side = s.ballOn < 50 ? (s.possession === 'home' ? hI : aI) : (s.possession === 'home' ? aI : hI);
     const yd = s.ballOn < 50 ? s.ballOn : 100 - s.ballOn;
     document.getElementById('hudBallOn').textContent = side + ' ' + yd;
     const stam = FB.ballCarrier ? FB.ballCarrier.stamina : 100;

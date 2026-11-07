@@ -1,0 +1,19 @@
+{
+  "seasons": [
+    {
+      "id": "2026-27",
+      "label": "2026–27 (this year)",
+      "file": "data/2026-27.json"
+    },
+    {
+      "id": "2025-26",
+      "label": "2025–26 (last year)",
+      "file": "data/2025-26.json"
+    },
+    {
+      "id": "2024-25",
+      "label": "2024–25",
+      "file": "data/2024-25.json"
+    }
+  ]
+}

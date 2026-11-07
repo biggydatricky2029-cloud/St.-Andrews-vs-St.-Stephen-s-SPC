@@ -2,25 +2,115 @@
 (function (FB) {
   'use strict';
 
-  async function loadRosters() {
-    const res = await fetch('roster.json');
-    const data = await res.json();
-    FB.teams.home = data.highlanders;
-    FB.teams.away = data.spartans;
-    Ratings.rateTeam(FB.teams.home);
-    Ratings.rateTeam(FB.teams.away);
+  // ---- Season / team data ----
+  // data/seasons.json lists the seasons; each season file holds every team.
+  // Team keys are "<season>|<teamId>", e.g. "2026-27|st-andrews".
+  FB.seasons = [];
+  FB.teamKey = function (season, id) { return season + '|' + id; };
+  FB.findTeamData = function (key) {
+    const [season, id] = String(key || '').split('|');
+    const s = FB.seasons.find(x => x.id === season);
+    return s ? s.teams.find(t => t.id === id) || null : null;
+  };
+  // Deep-clones a team, gives duplicate jersey numbers a unique internal id
+  // (the real number stays on screen via p.jersey), then rates it.
+  FB.prepareTeam = function (key) {
+    const src = FB.findTeamData(key);
+    if (!src) return null;
+    const team = deepClone(src);
+    team.key = key;
+    const seen = new Set();
+    for (const p of team.players) {
+      p.jersey = p.number;
+      if (seen.has(p.number)) { let n = 100 + p.number; while (seen.has(n)) n += 100; p.number = n; }
+      seen.add(p.number);
+    }
+    Ratings.rateTeam(team);
+    return team;
+  };
+  FB.jerseyOf = function (p) { return p ? (p.jersey != null ? p.jersey : p.number) : '?'; };
+  FB.setMatchup = function (homeKey, awayKey) {
+    FB.teams.home = FB.prepareTeam(homeKey);
+    FB.teams.away = FB.prepareTeam(awayKey);
     FB.lineups.home = deepClone(FB.teams.home.lineup);
     FB.lineups.away = deepClone(FB.teams.away.lineup);
+    // Same jersey color on both sides (e.g. a school vs another season of
+    // itself, or two placeholder-colored teams): the away side wears dark.
+    if (FB.teams.home.primaryColor.toLowerCase() === FB.teams.away.primaryColor.toLowerCase()) {
+      FB.teams.away.primaryColor = '#0a0a0a';
+      FB.teams.away._altJersey = true;
+    }
+    const lh = document.getElementById('logoHome'), la = document.getElementById('logoAway');
+    if (lh) lh.textContent = FB.teams.home.initial;
+    if (la) la.textContent = FB.teams.away.initial;
+    const sh = document.getElementById('subBtnHome'), sa = document.getElementById('subBtnAway');
+    if (sh) sh.textContent = FB.teams.home.shortName;
+    if (sa) sa.textContent = FB.teams.away.shortName;
+  };
+
+  async function loadRosters() {
+    const idx = await (await fetch('data/seasons.json')).json();
+    FB.seasons = await Promise.all(idx.seasons.map(async (s) => {
+      const d = await (await fetch(s.file)).json();
+      return { id: s.id, label: s.label, teams: d.teams };
+    }));
   }
   function deepClone(o) { return JSON.parse(JSON.stringify(o)); }
+  FB.deepClone = deepClone;
+
+  function seasonLabel(id) { const s = FB.seasons.find(x => x.id === id); return s ? s.label : id; }
+  FB.teamLabel = function (key) {
+    const t = FB.findTeamData(key);
+    return t ? t.teamName + ' (' + seasonLabel(t.season) + ')' : '—';
+  };
+
+  // Pre-game: Season → Your team → Opponent. Each picker lists the teams of
+  // its own season, so you can face the same or a different year.
+  function fillSeasonSelect(sel, value) {
+    sel.innerHTML = FB.seasons.map(s => '<option value="' + s.id + '">' + escapeHtml(s.label) + '</option>').join('');
+    if (value) sel.value = value;
+  }
+  function fillTeamSelect(sel, season, preferId, avoidId) {
+    const s = FB.seasons.find(x => x.id === season) || FB.seasons[0];
+    sel.innerHTML = s.teams.map(t => '<option value="' + t.id + '">' + escapeHtml(t.teamName) + ' — ' + escapeHtml((t.record || '').split(' |')[0]) + '</option>').join('');
+    const ids = s.teams.map(t => t.id);
+    if (preferId && ids.includes(preferId)) sel.value = preferId;
+    else if (avoidId) sel.value = ids.find(i => i !== avoidId) || ids[0];
+  }
+  function wireMatchupPicker() {
+    const ys = document.getElementById('pgUserSeason'), yt = document.getElementById('pgUserTeam');
+    const os = document.getElementById('pgOppSeason'), ot = document.getElementById('pgOppTeam');
+    const newest = FB.seasons[0].id;
+    fillSeasonSelect(ys, newest); fillSeasonSelect(os, newest);
+    fillTeamSelect(yt, newest, 'st-andrews');
+    fillTeamSelect(ot, newest, 'st-stephens', yt.value);
+    const apply = () => {
+      FB.setMatchup(FB.teamKey(ys.value, yt.value), FB.teamKey(os.value, ot.value));
+      renderPreGame();
+    };
+    ys.addEventListener('change', () => {
+      fillTeamSelect(yt, ys.value, yt.value);
+      // Opponent season follows yours until you change it yourself.
+      if (!os.dataset.touched) { os.value = ys.value; fillTeamSelect(ot, os.value, ot.value, yt.value); }
+      apply();
+    });
+    os.addEventListener('change', () => { os.dataset.touched = '1'; fillTeamSelect(ot, os.value, ot.value, yt.value); apply(); });
+    yt.addEventListener('change', apply);
+    ot.addEventListener('change', apply);
+    apply();
+  }
 
   function renderPreGame() {
+    document.getElementById('pgTitle').innerHTML = escapeHtml(FB.teams.home.shortName)
+      + ' <span class="pg-vs">vs</span> ' + escapeHtml(FB.teams.away.shortName);
     renderTeamCard('pgHome', FB.teams.home);
     renderTeamCard('pgAway', FB.teams.away);
     const notes = document.getElementById('pgNotes');
     const list = [];
     for (const t of [FB.teams.home, FB.teams.away]) {
-      if (t._dataNotes) for (const n of t._dataNotes) list.push('• [' + t.shortName + '] ' + n);
+      const tag = t.shortName + ' ' + t.season;
+      if (t._dataNotes) for (const n of t._dataNotes) list.push('• [' + tag + '] ' + n);
+      if (t.lineup && t.lineup.notes) for (const n of t.lineup.notes) list.push('• [' + tag + '] Depth chart: ' + n);
     }
     notes.innerHTML = '<h3>Data assumptions (transparent flagging)</h3>' + list.map(x => '<div>' + escapeHtml(x) + '</div>').join('');
   }
@@ -34,8 +124,11 @@
       { title: 'Defense', slots: Ratings.DEFENSE_SLOTS.map(s => s.slot), side: 'DEF' },
       { title: 'Special Teams', slots: Ratings.ST_SLOTS.map(s => s.slot), side: 'ST' },
     ];
-    let html = '<h2 style="color:' + team.primaryColor + '">' + escapeHtml(team.teamName) + '</h2>';
-    html += '<div class="pg-meta">GP: ' + team.gamesPlayed + ' • ' + team.players.length + ' players</div>';
+    let html = '<h2 style="color:' + (team._placeholderColors ? 'inherit' : team.primaryColor) + '">'
+      + '<span class="pg-logo' + (team._placeholderLogo ? ' placeholder' : '') + '">' + escapeHtml(team.initial) + '</span>'
+      + escapeHtml(team.teamName) + '</h2>';
+    html += '<div class="pg-meta">' + escapeHtml(seasonLabel(team.season)) + (team.record ? ' • ' + escapeHtml(team.record.split(' |')[0]) : '')
+      + ' • GP: ' + team.gamesPlayed + ' • ' + team.players.filter(p => !p._generated).length + ' players</div>';
     for (const g of groups) {
       html += '<div class="pg-group-title">' + g.title + '</div>';
       for (const slot of g.slots) {
@@ -47,7 +140,7 @@
         if (pl.isPlaceholder) badges.push('<span class="badge unrated">UNRATED</span>');
         if (pl.isSmallSample) badges.push('<span class="badge sample">SAMPLE</span>');
         html += '<div class="pg-row"><div class="pg-left"><span class="pg-slot">' + slot + '</span>'
-          + '<span class="pg-num">#' + pl.number + '</span>'
+          + '<span class="pg-num">#' + FB.jerseyOf(pl) + '</span>'
           + '<span class="pg-name">' + escapeHtml(pl.name) + '</span>'
           + badges.join('') + '</div>'
           + '<span class="pg-ovr">' + pl.overall + '</span></div>';
@@ -112,7 +205,7 @@
         const cur = lineup[g.side][slot];
         const curP = team.players.find(p => p.number === cur);
         const curOvrHtml = curP ? '<span class="sub-ovr">OVR ' + curP.overall + '</span>' : '';
-        const curNameHtml = curP ? '#' + curP.number + ' ' + escapeHtml(curP.name) : '—';
+        const curNameHtml = curP ? '#' + FB.jerseyOf(curP) + ' ' + escapeHtml(curP.name) : '—';
         card.innerHTML = '<div class="sub-slot-hdr">'
           + '<span class="slot-name">' + slot + '</span>'
           + '<span class="sub-current">' + curNameHtml + ' ' + curOvrHtml + '</span>'
@@ -141,7 +234,7 @@
             if (otherSlot !== slot && lineup[g.side][otherSlot] === p.number) { dupSlot = otherSlot; break; }
           }
           const dupTag = dupSlot ? ' <span class="sc-lock">in ' + dupSlot + '</span>' : '';
-          btn.innerHTML = '<span class="sc-num">#' + p.number + '</span>'
+          btn.innerHTML = '<span class="sc-num">#' + FB.jerseyOf(p) + '</span>'
             + '<span class="sc-name">' + escapeHtml(last) + lockTag + dupTag + '</span>'
             + '<span class="sc-ovr">OVR ' + p.overall + '</span>';
           const displayName = p.displayName || p.name;
@@ -184,7 +277,7 @@
         const displayName = p.displayName || p.name;
         const lockTag = Array.isArray(p._quarterRestrict) && p._quarterRestrict.length > 0
           ? ' <span class="pg-lock">Q' + p._quarterRestrict.join('/Q') + '</span>' : '';
-        html += '<div class="pg-row"><div class="pg-left"><span class="pg-num">#' + p.number + '</span>'
+        html += '<div class="pg-row"><div class="pg-left"><span class="pg-num">#' + FB.jerseyOf(p) + '</span>'
           + '<span class="pg-name">' + escapeHtml(displayName) + lockTag + '</span>'
           + '<span class="pg-slot">' + p.positions.join('/') + '</span></div>'
           + '<span class="pg-ovr">' + (p.overall || '—') + '</span></div>';
@@ -226,7 +319,7 @@
     if (st.rushingYards) parts.push(st.rushingYards + ' rush yds');
     if (st.receivingYards) parts.push(st.receivingYards + ' rec yds');
     if (st.tackles) parts.push(st.tackles + ' tkl');
-    return p ? '#' + p.number + ' ' + p.name + ' — ' + parts.join(', ') : '—';
+    return p ? '#' + FB.jerseyOf(p) + ' ' + p.name + ' — ' + parts.join(', ') : '—';
   }
 
   function shareResult() {
@@ -235,7 +328,7 @@
       + s.score.home + '-' + s.score.away + '. Top: ' + topPerformer(s.score.home >= s.score.away ? 'home' : 'away');
     const url = location.href;
     if (navigator.share) {
-      navigator.share({ title: 'Highlanders vs Spartans', text, url }).catch(() => fallback());
+      navigator.share({ title: FB.teams.home.shortName + ' vs ' + FB.teams.away.shortName, text, url }).catch(() => fallback());
     } else fallback();
     function fallback() {
       const sms = 'sms:?&body=' + encodeURIComponent(text + ' ' + url);
@@ -721,7 +814,7 @@
   }
 
   // ---- Bootstrap ----
-  const BUILD_TAG = 'BUILD-20260422j';
+  const BUILD_TAG = 'BUILD-20261107a';
   function paintVersionTag() {
     try {
       const host = document.body;
@@ -738,16 +831,14 @@
     // Install playbook stub immediately so nothing downstream crashes on it.
     try { ensurePlaybook(); } catch (_) {}
     try { await loadRosters(); }
-    catch (e) { alert('Failed to load roster.json: ' + e.message); return; }
-    renderPreGame();
+    catch (e) { alert('Failed to load season rosters: ' + e.message); return; }
+    wireMatchupPicker();
     wireTeamPick();
     wirePlayPicker();
     document.getElementById('pgStart').addEventListener('click', startGame);
     wireTabs();
     document.getElementById('goShare').addEventListener('click', shareResult);
     document.getElementById('goRestart').addEventListener('click', () => location.reload());
-    document.getElementById('logoHome').textContent = FB.teams.home.initial;
-    document.getElementById('logoAway').textContent = FB.teams.away.initial;
   }
 
   function startGame() {
