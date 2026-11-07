@@ -9,10 +9,17 @@
     requestAnimationFrame(tick);
   };
 
+  let lastErrMsg = '';
   function tick(t) {
+    // Schedule the next frame first so one bad frame can never freeze the game.
+    requestAnimationFrame(tick);
     const dt = Math.min(0.05, (t - last) / 1000);
     last = t;
-    step(dt);
+    try { step(dt); }
+    catch (e) {
+      const msg = String(e && e.message);
+      if (msg !== lastErrMsg) { lastErrMsg = msg; console.error('[loop] frame error (game continues):', e); }
+    }
     FB.updateCrowd && FB.updateCrowd(t * 0.001);
     // postfx.js owns the render (composer chain, quality benchmark, grass
     // wind clock); plain renderer.render is the no-postfx fallback.
@@ -23,7 +30,6 @@
     } else if (FB.renderer && FB.scene && FB.camera) {
       FB.renderer.render(FB.scene, FB.camera);
     }
-    requestAnimationFrame(tick);
   }
 
   function step(dt) {

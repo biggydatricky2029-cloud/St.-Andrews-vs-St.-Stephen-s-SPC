@@ -165,9 +165,13 @@
         const speed = Math.hypot(ent.vel.x, ent.vel.z);
         const state = pickState(ent, speed);
 
-        // Per-state timers.
+        // Per-state timers. Read the throw progress BEFORE the timer can clear
+        // animThrow: the frame the throw finishes used to null it and then
+        // read animThrow.t below, crashing the game loop mid-pass (freeze).
+        let throwT = 1;
         if (ent.animThrow) {
           ent.animThrow.t += dt;
+          throwT = Math.min(1, ent.animThrow.t / 0.85);
           if (ent.animThrow.t > 0.85) ent.animThrow = null;
         }
         if (ent.animCelebrate > 0) ent.animCelebrate -= dt;
@@ -187,7 +191,7 @@
           continue;
         }
         switch (state) {
-          case 'throw': poseThrow(target, Math.min(1, ent.animThrow.t / 0.85)); break;
+          case 'throw': poseThrow(target, throwT); break;
           case 'catch': poseCatch(target); break;
           case 'block': poseBlock(target, a); break;
           case 'celebrate': poseCelebrate(target, a); break;
