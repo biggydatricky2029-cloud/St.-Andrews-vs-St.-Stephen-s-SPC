@@ -163,28 +163,6 @@
       ]
     },
     {
-        "id": "houston-christian",
-        "season": "2025-26",
-        "school": "Houston Christian",
-        "teamName": "Houston Christian Mustangs",
-        "shortName": "Mustangs",
-        "initial": "H",
-        "primaryColor": "#6b7280",
-        "secondaryColor": "#e5e7eb",
-        "_placeholderColors": true,
-        "_placeholderLogo": true,
-        "gamesPlayed": 10,
-        "record": "4-6 | SPC 3A: 3-3 | Non-SPC: 1-3 | Points: 253 scored, 259 allowed",
-        "_dataNotes": [
-            "Source note: Official SPC standings for this season list Houston Christian 3-3 in conference play and 3-6 overall.",
-            "Team colors, logo and end-zone art are placeholders (not in source files).",
-            "NO PLAYER STATS in source files (MaxPreps: \"Player Stats Not Entered\"). Every player is an unrated \"Unlisted\" fill-in."
-        ],
-      "players": [
-
-      ]
-    },
-    {
         "id": "st-andrews",
         "season": "2025-26",
         "school": "St. Andrew's",
@@ -242,28 +220,6 @@
         {"number":70,"name":"G. Wood","class":"Sr","positions":["G","NG"],"height":null,"weight":null,"stats":{"gp":3,"soloTackles":0,"assistTackles":3,"tackles":3,"tfl":0}},
         {"number":74,"name":"A. Boerema","class":"So","positions":["DE","T"],"height":null,"weight":null,"stats":{"gp":9,"soloTackles":2,"assistTackles":8,"tackles":10,"tfl":2.0,"sacks":0.5,"sackYards":0,"hurries":2,"interceptions":0,"interceptionReturnYards":0,"passesDefended":0,"fumbleRecoveries":1,"fumbleReturnYards":0,"forcedFumbles":0,"blockedPunts":0,"blockedFGs":0}},
         {"number":78,"name":"P. Henderson","class":"So","positions":["T","DE"],"height":null,"weight":null,"stats":{"gp":10,"soloTackles":0,"assistTackles":8,"tackles":8,"tfl":0,"sacks":0,"sackYards":0,"hurries":1}}
-      ]
-    },
-    {
-        "id": "cistercian",
-        "season": "2025-26",
-        "school": "Cistercian",
-        "teamName": "Cistercian Hawks",
-        "shortName": "Hawks",
-        "initial": "C",
-        "primaryColor": "#6b7280",
-        "secondaryColor": "#e5e7eb",
-        "_placeholderColors": true,
-        "_placeholderLogo": true,
-        "gamesPlayed": 9,
-        "record": "1-8 | SPC 3A: 1-5 | Non-SPC: 0-3 | Points: 132 scored, 337 allowed",
-        "_dataNotes": [
-            "PDF lists the team as \"Cistercian Hawkss\" — shown as \"Cistercian Hawks\" (assumed typo).",
-            "Team colors, logo and end-zone art are placeholders (not in source files).",
-            "NO PLAYER STATS in source files (MaxPreps: \"Player Stats Not Entered\"). Every player is an unrated \"Unlisted\" fill-in."
-        ],
-      "players": [
-
       ]
     },
     {

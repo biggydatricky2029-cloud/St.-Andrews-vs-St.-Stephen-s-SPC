@@ -261,10 +261,11 @@
         "_dataNotes": [
             "Source note: The 2026–27 SPC 3A postseason (semifinals Nov 7, championship Nov 14, 2026) had not yet been played as of the research date; records reflect the regular season only.",
             "Team colors, logo and end-zone art are placeholders (not in source files).",
+            "#80 J. Alexander positions set to RB/WR per user instruction (none listed in source).",
             "Player names are listed as first initial + last name (full names not in source files).",
             "Height and weight not in source files for any player.",
             "No field-goal / extra-point breakdown in source files — kickers rated on kickoffs/punts only.",
-            "No position listed (position guessed from stats): #7 G. Joyner (QB/RB/CB), #15 B. Eason (RB/LB), #80 J. Alexander (QB/RB/CB), #0 P. Agor-Pius (WR/K/CB), #6 J. Montez (WR/CB), #8 C. Medford (RB/LB), #23 M. Pena (RB/CB), #27 R. Sandoval (RB/LB), #29 T. Benson (RB/LB), #71 S. Cruz (RB/LB), #1 W. Mendenhall (WR/CB), #2 M. Anderson (WR/CB), #3 I. Johnson (WR/LB), #9 L. Campos (WR/CB), #5 A. Murphy (LB), #10 W. Robinson (LB), #11 E. Surita (LB), #13 C. Reilly (LB), #14 C. Esra (LB), #21 G. Schick (CB), #22 M. Bankole (LB), #25 L. Alvarado (LB), #44 B. Smith (LB), #50 S. Vargas (LB), #58 D. Keeter (LB), #64 C. Gaya (LB), #65 S. Stratton (LB), #72 A. Browning (LB), #99 J. Sample (LB).",
+            "No position listed (position guessed from stats): #7 G. Joyner (QB/RB/CB), #15 B. Eason (RB/LB), #0 P. Agor-Pius (WR/K/CB), #6 J. Montez (WR/CB), #8 C. Medford (RB/LB), #23 M. Pena (RB/CB), #27 R. Sandoval (RB/LB), #29 T. Benson (RB/LB), #71 S. Cruz (RB/LB), #1 W. Mendenhall (WR/CB), #2 M. Anderson (WR/CB), #3 I. Johnson (WR/LB), #9 L. Campos (WR/CB), #5 A. Murphy (LB), #10 W. Robinson (LB), #11 E. Surita (LB), #13 C. Reilly (LB), #14 C. Esra (LB), #21 G. Schick (CB), #22 M. Bankole (LB), #25 L. Alvarado (LB), #44 B. Smith (LB), #50 S. Vargas (LB), #58 D. Keeter (LB), #64 C. Gaya (LB), #65 S. Stratton (LB), #72 A. Browning (LB), #99 J. Sample (LB).",
             "Source has no kickoffs, punting table for this team-season."
         ],
       "players": [
@@ -295,7 +296,7 @@
         {"number":65,"name":"S. Stratton","class":"Fr","positions":["LB"],"height":null,"weight":null,"stats":{"gp":2,"soloTackles":1,"assistTackles":0,"tackles":1,"tfl":0,"_assumed":["positions"]}},
         {"number":71,"name":"S. Cruz","class":"Sr","positions":["RB","LB"],"height":null,"weight":null,"stats":{"gp":4,"carries":1,"rushingYards":5,"longRush":5,"rushes100plus":0,"rushingTDs":0,"allPurposeYards":5,"totalOffense":5,"soloTackles":0,"assistTackles":2,"tackles":2,"tfl":0,"_assumed":["positions"]}},
         {"number":72,"name":"A. Browning","class":"Sr","positions":["LB"],"height":null,"weight":null,"stats":{"gp":7,"soloTackles":7,"assistTackles":4,"tackles":11,"tfl":1.0,"sacks":0,"sackYards":0,"hurries":2,"_assumed":["positions"]}},
-        {"number":80,"name":"J. Alexander","class":"So","positions":["QB","RB","CB"],"height":null,"weight":null,"stats":{"gp":10,"completions":5,"attempts":8,"passingYards":178,"passingTDs":2,"interceptionsThrown":0,"longPass":80,"qbRating":145.8,"carries":132,"rushingYards":1168,"longRush":67,"rushes100plus":4,"rushingTDs":25,"receptions":52,"receivingYards":873,"longRec":50,"receivingTDs":9,"allPurposeYards":2173,"totalOffense":2219,"soloTackles":34,"assistTackles":7,"tackles":41,"tfl":3.0,"interceptions":2,"interceptionReturnYards":0,"passesDefended":5,"fumbleRecoveries":0,"fumbleReturnYards":0,"forcedFumbles":1,"blockedPunts":0,"blockedFGs":0,"kickReturns":1,"kickReturnYards":50,"longKR":50,"puntReturns":2,"puntReturnYards":82,"longPR":72,"fairCatches":1,"totalTDs":31,"twoPointConversions":24,"safeties":0,"kickingPoints":0,"totalPoints":210,"fumbleReturnTDs":0,"interceptionTDs":0,"puntReturnTDs":1,"kickReturnTDs":0,"_assumed":["positions"]}},
+        {"number":80,"name":"J. Alexander","class":"So","positions":["RB","WR"],"height":null,"weight":null,"stats":{"gp":10,"completions":5,"attempts":8,"passingYards":178,"passingTDs":2,"interceptionsThrown":0,"longPass":80,"qbRating":145.8,"carries":132,"rushingYards":1168,"longRush":67,"rushes100plus":4,"rushingTDs":25,"receptions":52,"receivingYards":873,"longRec":50,"receivingTDs":9,"allPurposeYards":2173,"totalOffense":2219,"soloTackles":34,"assistTackles":7,"tackles":41,"tfl":3.0,"interceptions":2,"interceptionReturnYards":0,"passesDefended":5,"fumbleRecoveries":0,"fumbleReturnYards":0,"forcedFumbles":1,"blockedPunts":0,"blockedFGs":0,"kickReturns":1,"kickReturnYards":50,"longKR":50,"puntReturns":2,"puntReturnYards":82,"longPR":72,"fairCatches":1,"totalTDs":31,"twoPointConversions":24,"safeties":0,"kickingPoints":0,"totalPoints":210,"fumbleReturnTDs":0,"interceptionTDs":0,"puntReturnTDs":1,"kickReturnTDs":0}},
         {"number":99,"name":"J. Sample","class":"Sr","positions":["LB"],"height":null,"weight":null,"stats":{"gp":9,"soloTackles":22,"assistTackles":15,"tackles":37,"tfl":4.0,"sacks":1.5,"sackYards":0,"hurries":3,"_assumed":["positions"]}}
       ]
     },
@@ -349,86 +350,6 @@
         {"number":60,"name":"A. Becker","class":"So","positions":["OL","DL"],"height":null,"weight":null,"stats":{"gp":9,"soloTackles":3,"assistTackles":2,"tackles":5,"tfl":2.0}},
         {"number":73,"name":"B. Killion","class":"Sr","positions":["OL","DL"],"height":null,"weight":null,"stats":{"gp":9,"soloTackles":19,"assistTackles":24,"tackles":43,"tfl":7.0,"sacks":3.0,"sackYards":18,"hurries":0}},
         {"number":79,"name":"M. Schneiderman","class":"Sr","positions":["OL","DL"],"height":null,"weight":null,"stats":{"gp":9,"soloTackles":21,"assistTackles":11,"tackles":32,"tfl":4.0,"sacks":2.0,"sackYards":13,"hurries":0,"interceptions":0,"interceptionReturnYards":0,"passesDefended":0,"fumbleRecoveries":0,"fumbleReturnYards":0,"forcedFumbles":1,"blockedPunts":0,"blockedFGs":0}}
-      ]
-    },
-    {
-        "id": "cistercian",
-        "season": "2026-27",
-        "school": "Cistercian",
-        "teamName": "Cistercian Hawks",
-        "shortName": "Hawks",
-        "initial": "C",
-        "primaryColor": "#6b7280",
-        "secondaryColor": "#e5e7eb",
-        "_placeholderColors": true,
-        "_placeholderLogo": true,
-        "gamesPlayed": 10,
-        "record": "3-7 | SPC 3A: 1-6 | Non-SPC: 2-1 | Points: 190 scored, 420 allowed",
-        "_dataNotes": [
-            "Source note: Oct 23, 2026 vs St. Andrew's: St. Andrew's won on the field 40–14 (per MaxPreps); the official SPC records this game as a Cistercian win by forfeit, which is why SPC standings show Cistercian 2–5 / 4–6. This report uses the on-field result from MaxPreps. MaxPreps player statistics for this season were last updated Sept 12, 2026 and reflect only the first three games. The 2026–27 SPC 3A postseason (semifinals Nov 7, championship Nov 14, 2026) had not yet been played as of the research date; records reflect the regular season only.",
-            "PDF lists the team as \"Cistercian Hawkss\" — shown as \"Cistercian Hawks\" (assumed typo).",
-            "Team colors, logo and end-zone art are placeholders (not in source files).",
-            "Player names are listed as first initial + last name (full names not in source files).",
-            "Height and weight not in source files for any player.",
-            "No field-goal / extra-point breakdown in source files — kickers rated on kickoffs/punts only.",
-            "No position listed (position guessed from stats): #10 T. Stanley (QB/RB), #1 T. Carlton (WR), #3 H. Hart (RB), #17 T. Odogwu (RB/K), #11 A. Kenny (WR), #20 N. Espinoza (WR).",
-            "No class year listed: #10 T. Stanley, #1 T. Carlton, #3 H. Hart, #17 T. Odogwu, #11 A. Kenny, #20 N. Espinoza.",
-            "Source has no tackles, sacks, kickoffs, punting, kick/punt returns table for this team-season."
-        ],
-      "players": [
-        {"number":1,"name":"T. Carlton","class":null,"positions":["WR"],"height":null,"weight":null,"stats":{"gp":2,"carries":1,"rushingYards":0,"longRush":0,"rushes100plus":0,"rushingTDs":0,"receptions":6,"receivingYards":67,"longRec":0,"receivingTDs":0,"allPurposeYards":67,"totalOffense":67,"_assumed":["positions"]}},
-        {"number":3,"name":"H. Hart","class":null,"positions":["RB"],"height":null,"weight":null,"stats":{"gp":2,"carries":46,"rushingYards":198,"longRush":0,"rushes100plus":1,"rushingTDs":4,"receptions":1,"receivingYards":-6,"longRec":0,"receivingTDs":0,"allPurposeYards":192,"totalOffense":192,"fumbleReturnTDs":0,"interceptionTDs":0,"puntReturnTDs":0,"kickReturnTDs":0,"_assumed":["positions"]}},
-        {"number":10,"name":"T. Stanley","class":null,"positions":["QB","RB"],"height":null,"weight":null,"stats":{"gp":2,"completions":13,"attempts":23,"passingYards":99,"passingTDs":0,"interceptionsThrown":2,"longPass":0,"qbRating":30.9,"carries":32,"rushingYards":191,"longRush":0,"rushes100plus":1,"rushingTDs":2,"allPurposeYards":191,"totalOffense":290,"fumbleReturnTDs":0,"interceptionTDs":0,"puntReturnTDs":0,"kickReturnTDs":0,"_assumed":["positions"]}},
-        {"number":11,"name":"A. Kenny","class":null,"positions":["WR"],"height":null,"weight":null,"stats":{"gp":2,"receptions":2,"receivingYards":4,"longRec":0,"receivingTDs":0,"allPurposeYards":4,"totalOffense":4,"_assumed":["positions"]}},
-        {"number":17,"name":"T. Odogwu","class":null,"positions":["RB","K"],"height":null,"weight":null,"stats":{"gp":2,"carries":1,"rushingYards":-13,"longRush":0,"rushes100plus":0,"rushingTDs":0,"allPurposeYards":-13,"totalOffense":-13,"totalTDs":0,"twoPointConversions":0,"safeties":0,"kickingPoints":2,"totalPoints":0,"_assumed":["positions"]}},
-        {"number":20,"name":"N. Espinoza","class":null,"positions":["WR"],"height":null,"weight":null,"stats":{"gp":1,"receptions":2,"receivingYards":17,"longRec":0,"receivingTDs":0,"allPurposeYards":17,"totalOffense":17,"_assumed":["positions"]}}
-      ]
-    },
-    {
-        "id": "st-stephens",
-        "season": "2026-27",
-        "school": "St. Stephen's",
-        "teamName": "St. Stephen's Spartans",
-        "shortName": "Spartans",
-        "initial": "S",
-        "primaryColor": "#b22222",
-        "secondaryColor": "#8a2be2",
-        "_placeholderColors": false,
-        "_placeholderLogo": false,
-        "gamesPlayed": 9,
-        "record": "0-9 | SPC 3A: 0-7 | Non-SPC: 0-2 | Points: 104 scored, 457 allowed",
-        "_dataNotes": [
-            "Source note: Sept 4, 2026 vs Greenhill: MaxPreps marks this as a district game, and the official SPC standings count it in St. Stephen's 0–8 conference record. Greenhill, however, is an SPC 4A school in 2026–27 (it is not in the SPC 3A standings), so this report classifies the game as non-SPC 3A per the report methodology. The 2026–27 SPC 3A postseason (semifinals Nov 7, championship Nov 14, 2026) had not yet been played as of the research date; records reflect the regular season only.",
-            "Source PDF has no St. Stephen's 2026-27 player stats (\"Player Stats Not Entered\") — players below are the roster the game already had, with its original notes:",
-            "Beckett Edel (#32) FG% set to 80% per user instruction.",
-            "All Spartans special-teams stats (kickoff/punt/returner volume) assigned randomly — marked _assumed: allSpecialTeams.",
-            "Dante Menezes (#50) returner stats are fabricated for depth-chart purposes.",
-            "Placeholder players (no gp) rated by class + size."
-        ],
-      "players": [
-        {"number":6,"name":"Basil Baldwin","class":"Sr","positions":["QB"],"height":"","weight":0,"stats":{"gp":3,"completions":62,"attempts":88,"passingYards":921,"passingTDs":14,"interceptionsThrown":2,"longPass":45,"qbRating":134.5,"carries":5,"rushingYards":21,"rushingTDs":1,"longRush":7}},
-        {"number":9,"name":"Keyen Gupta","class":"Sr","positions":["CB"],"height":"","weight":0,"stats":{"gp":2,"tackles":2,"soloTackles":2,"passesDefended":1}},
-        {"number":11,"name":"Sam Jones","class":"So","positions":["RB","WR"],"height":"5'11\"","weight":150,"stats":{"gp":3,"carries":24,"rushingYards":138,"rushingTDs":1,"receptions":8,"receivingYards":113,"receivingTDs":2,"tackles":5,"soloTackles":3,"assistTackles":2}},
-        {"number":12,"name":"Noah Felger","class":"So","positions":["WR","FS"],"height":"5'9\"","weight":145,"stats":{"gp":0,"_placeholder":true}},
-        {"number":13,"name":"Freddie Downing","class":"Jr","positions":["WR","FS"],"height":"5'7\"","weight":130,"stats":{"gp":3,"receptions":6,"receivingYards":111,"receivingTDs":1}},
-        {"number":17,"name":"Will Walters","class":"Sr","positions":["RB","DE"],"height":"","weight":0,"stats":{"gp":3,"receptions":18,"receivingYards":258,"receivingTDs":5,"tackles":1,"soloTackles":1}},
-        {"number":18,"name":"Henry Hanna","class":"Jr","positions":["RB","FB"],"height":"","weight":0,"stats":{"gp":0,"_placeholder":true}},
-        {"number":21,"name":"Briggs Davenport","class":"Sr","positions":["WR","MLB"],"height":"","weight":0,"stats":{"gp":2,"tackles":3,"soloTackles":1,"assistTackles":2}},
-        {"number":23,"name":"Rett Berger","class":"Sr","positions":["WR","RB"],"height":"5'8\"","weight":125,"stats":{"gp":3,"receptions":9,"receivingYards":220,"receivingTDs":3,"longRec":45,"carries":1,"rushingYards":7,"rushingTDs":1,"tackles":3,"soloTackles":1,"assistTackles":2}},
-        {"number":26,"name":"Luke Mabley","class":"Sr","positions":["OL"],"height":"6'2\"","weight":180,"stats":{"gp":1,"receptions":3,"receivingYards":22}},
-        {"number":30,"name":"Emmet Felner","class":"Sr","positions":["OL","RB"],"height":"","weight":0,"stats":{"gp":0,"_placeholder":true}},
-        {"number":32,"name":"Beckett Edel","class":"So","positions":["K","OL"],"height":"5'10\"","weight":170,"stats":{"gp":3,"fieldGoalsMade":8,"fieldGoalsAttempted":10,"xpMade":12,"xpAttempted":14,"kickoffs":20,"kickoffYards":800,"kickoffAvg":40.0,"touchbacks":2,"punts":12,"puntYards":360,"puntAverage":30.0,"longPunt":42,"puntsInside20":1,"kickReturns":4,"kickReturnYards":52,"longKR":18,"_assumed":["allSpecialTeams"]}},
-        {"number":42,"name":"Gavin Snyder","class":"So","positions":["OL","DT"],"height":"6'0\"","weight":175,"stats":{"gp":1,"tackles":2,"assistTackles":2}},
-        {"number":43,"name":"Wyatt Levine","class":"Jr","positions":["OLB"],"height":"6'2\"","weight":195,"stats":{"gp":0,"_placeholder":true,"_note":"6'2/195 starter size"}},
-        {"number":44,"name":"Issaic Jose","class":"So","positions":["OL","DT"],"height":"","weight":0,"stats":{"gp":0,"_placeholder":true}},
-        {"number":50,"name":"Dante Menezes","class":"Jr","positions":["WR"],"height":"","weight":0,"stats":{"gp":0,"_placeholder":true,"puntReturns":6,"puntReturnYards":48,"longPR":22,"kickReturns":3,"kickReturnYards":45,"longKR":22,"_assumed":["allSpecialTeams"]}},
-        {"number":52,"name":"Charlie Navarre","class":"Sr","positions":["LB"],"height":"","weight":0,"stats":{"gp":1,"tackles":1,"soloTackles":1}},
-        {"number":60,"name":"Sebastian Creixell","class":"Sr","positions":["OL","DT"],"height":"5'11\"","weight":240,"stats":{"gp":3,"tackles":15,"soloTackles":8,"assistTackles":7,"tfl":4,"sacks":1.0}},
-        {"number":65,"name":"Joshua Lu","class":"Jr","positions":["OL","DT"],"height":"","weight":0,"stats":{"gp":0,"_placeholder":true}},
-        {"number":66,"name":"Wills Magruder","class":"So","positions":["OLB","OL"],"height":"","weight":0,"stats":{"gp":0,"_placeholder":true}},
-        {"number":72,"name":"Matias Hernandez","class":"So","positions":["DT"],"height":"","weight":0,"stats":{"gp":2,"tackles":5,"soloTackles":1,"assistTackles":4}},
-        {"number":75,"name":"Oscar Goodridge","class":"So","positions":["OL","DL"],"height":"5'11\"","weight":221,"stats":{"gp":0,"_placeholder":true}},
-        {"number":81,"name":"Wylie Halloran","class":"Sr","positions":["WR","K"],"height":"6'0\"","weight":155,"stats":{"gp":3,"receptions":12,"receivingYards":154,"receivingTDs":2,"longRec":32}}
       ]
     }
   ]
