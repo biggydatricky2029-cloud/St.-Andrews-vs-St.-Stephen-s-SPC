@@ -16,6 +16,7 @@
         "gamesPlayed": 11,
         "record": "8-3 | SPC 3A: 7-0 | Non-SPC: 1-3 | Points: 273 scored, 185 allowed",
         "_dataNotes": [
+            "Source note: Includes the SPC 3A championship game (Nov 9, 2024: Houston Christian 21, Trinity Valley 12). Official SPC standings, which cover the regular season only, list Houston Christian 6–0 in conference play.",
             "Team colors, logo and end-zone art are placeholders (not in source files).",
             "Player names are listed as first initial + last name (full names not in source files).",
             "Height and weight not in source files for any player.",
@@ -68,6 +69,7 @@
         "gamesPlayed": 10,
         "record": "5-5 | SPC 3A: 4-3 | Non-SPC: 1-2 | Points: 240 scored, 252 allowed",
         "_dataNotes": [
+            "Source note: Includes the SPC 3A championship game (Nov 9, 2024: Houston Christian 21, Trinity Valley 12). Official SPC standings, which cover the regular season only, list Trinity Valley 4–2 in conference play.",
             "Team colors, logo and end-zone art are placeholders (not in source files).",
             "Player names are listed as first initial + last name (full names not in source files).",
             "Height and weight not in source files for any player.",
@@ -190,6 +192,7 @@
         "gamesPlayed": 10,
         "record": "7-3 | SPC 3A: 3-3 | Non-SPC: 4-0 | Points: 294 scored, 143 allowed",
         "_dataNotes": [
+            "Source note: The Sept 6, 2024 win over FCA (Fellowship Christian Academy) is recorded by MaxPreps as a forfeit (0–0).",
             "Team colors, logo and end-zone art are placeholders (not in source files).",
             "Player names are listed as first initial + last name (full names not in source files).",
             "Height and weight not in source files for any player.",
@@ -327,7 +330,7 @@
             "Player names are listed as first initial + last name (full names not in source files).",
             "Height and weight not in source files for any player.",
             "No field-goal / extra-point breakdown in source files — kickers rated on kickoffs/punts only.",
-            "No position listed (position guessed from stats): #13 A. Toland (LB), #24 J. Kramer (LB), #28 C. Near (LB), #33 H. Deane (LB), #50 C. Snyder (LB), #53 J. Wood (LB), #56 G. Lindhjem (LB), #77 D. Zubedy (WR).",
+            "No position listed (position guessed from stats): #13 A. Toland (LB), #24 J. Kramer (LB), #28 C. Near (LB), #50 C. Snyder (LB), #53 J. Wood (LB), #56 G. Lindhjem (LB), #77 D. Zubedy (WR).",
             "No class year listed: #13 A. Toland, #24 J. Kramer, #28 C. Near."
         ],
       "players": [
@@ -355,7 +358,7 @@
         {"number":25,"name":"G. Walrath","class":"So","positions":["CB","RB"],"height":null,"weight":null,"stats":{"gp":1,"soloTackles":1,"assistTackles":1,"tackles":2,"tfl":0,"interceptions":0,"interceptionReturnYards":0,"passesDefended":1,"fumbleRecoveries":0,"fumbleReturnYards":0,"forcedFumbles":0,"blockedPunts":0,"blockedFGs":0},"positionsListed":["DB","RB"]},
         {"number":28,"name":"C. Near","class":null,"positions":["LB"],"height":null,"weight":null,"stats":{"gp":3,"soloTackles":0,"assistTackles":2,"tackles":2,"tfl":0,"sacks":0,"sackYards":0,"hurries":2,"_assumed":["positions"]}},
         {"number":32,"name":"C. Goldman","class":"Fr","positions":["MLB","G"],"height":null,"weight":null,"stats":{"gp":2,"soloTackles":1,"assistTackles":4,"tackles":5,"tfl":3.0,"sacks":0,"sackYards":0,"hurries":1}},
-        {"number":33,"name":"H. Deane","class":"Sr","positions":["LB"],"height":null,"weight":null,"stats":{"gp":9,"soloTackles":11,"assistTackles":13,"tackles":24,"tfl":7.0,"sacks":0,"sackYards":0,"hurries":8,"interceptions":0,"interceptionReturnYards":0,"passesDefended":0,"fumbleRecoveries":0,"fumbleReturnYards":0,"forcedFumbles":1,"blockedPunts":0,"blockedFGs":0,"_assumed":["positions"]}},
+        {"number":33,"name":"H. Deane","class":"Sr","positions":["MLB","OLB","DE"],"height":null,"weight":null,"stats":{"gp":9,"soloTackles":11,"assistTackles":13,"tackles":24,"tfl":7.0,"sacks":0,"sackYards":0,"hurries":8,"interceptions":0,"interceptionReturnYards":0,"passesDefended":0,"fumbleRecoveries":0,"fumbleReturnYards":0,"forcedFumbles":1,"blockedPunts":0,"blockedFGs":0}},
         {"number":50,"name":"C. Snyder","class":"Jr","positions":["LB"],"height":null,"weight":null,"stats":{"gp":1,"soloTackles":0,"assistTackles":1,"tackles":1,"tfl":1.0,"_assumed":["positions"]}},
         {"number":52,"name":"E. Hsu","class":"Jr","positions":["C","G","T"],"height":null,"weight":null,"stats":{"gp":9,"soloTackles":20,"assistTackles":14,"tackles":34,"tfl":10.0,"sacks":1.0,"sackYards":0,"hurries":13}},
         {"number":53,"name":"J. Wood","class":"Fr","positions":["LB"],"height":null,"weight":null,"stats":{"gp":4,"soloTackles":6,"assistTackles":0,"tackles":6,"tfl":1.0,"sacks":0,"sackYards":0,"hurries":2,"_assumed":["positions"]}},

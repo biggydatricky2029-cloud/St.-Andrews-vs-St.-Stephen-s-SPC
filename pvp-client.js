@@ -462,7 +462,7 @@ function pvpFillTeams(ctx) {
   const season = FB.seasons.find(s => s.id === ss.value) || FB.seasons[0];
   if (!season) return;
   const prev = ts.value;
-  ts.innerHTML = season.teams.map(t => '<option value="' + t.id + '">' + escapeHtml(t.teamName) + '</option>').join('');
+  ts.innerHTML = season.teams.map(t => '<option value="' + t.id + '">' + escapeHtml(t.teamName) + (t.players.length ? '' : ' (no player stats)') + '</option>').join('');
   if (season.teams.some(t => t.id === prev)) ts.value = prev;
 }
 function pvpSelectedTeam(ctx) {

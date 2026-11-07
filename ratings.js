@@ -308,8 +308,8 @@
   // rosters rarely list offensive linemen or kickers): use the best unused
   // player from the same side of the ball, then anyone unused. Every
   // fallback is recorded in lineup.notes so it shows on the pre-game screen.
-  function fallbackFor(slot, side, roster, used) {
-    const pool = roster.filter((p) => !used.has(p.number) && !isQuarterLocked(p) && !p._generated);
+  function fallbackFor(slot, side, roster, used, allowGenerated) {
+    const pool = roster.filter((p) => !used.has(p.number) && !isQuarterLocked(p) && (allowGenerated || !p._generated));
     const sameSide = pool.filter((p) => p.positions.some((pp) => sideOf(pp) === side));
     const list = sameSide.length ? sameSide : pool;
     list.sort((a, b) => (b.overall || 0) - (a.overall || 0));
@@ -317,12 +317,13 @@
   }
 
   // Last resort for very small rosters: an unrated, clearly-labelled fill-in.
-  function makeFillIn(roster, slotName) {
+  function makeFillIn(roster, slot) {
+    const pos = slot.pos ? slot.pos[0] : 'WR';
     let n = 99;
     const taken = new Set(roster.map((p) => p.number));
     while (taken.has(n) && n > 0) n--;
     if (taken.has(n)) { n = 100; while (taken.has(n)) n++; }
-    const p = { number: n, name: 'Unlisted Player', class: null, positions: [slotName.replace(/[0-9]/g, '')],
+    const p = { number: n, name: 'Unlisted ' + pos, class: null, positions: [pos],
       height: null, weight: null, stats: { gp: 0, _placeholder: true }, _generated: true };
     computeOverall(p, null);
     roster.push(p);
@@ -341,11 +342,11 @@
           p = fallbackFor(slot, side, teamRoster, used);
           if (p) lineup.notes.push(`${side} ${slot.slot}: no listed ${slot.pos.join('/')} — #${p.jersey != null ? p.jersey : p.number} ${p.name} fills in out of position.`);
           else {
-            p = makeFillIn(teamRoster, slot.slot);
-            lineup.notes.push(`${side} ${slot.slot}: roster too small — unrated "Unlisted Player" fills in.`);
+            p = makeFillIn(teamRoster, slot);
+            lineup.notes.push(`${side} ${slot.slot}: roster too small — unrated "${p.name}" fills in.`);
           }
         } else if (!p) {
-          p = fallbackFor(slot, side, teamRoster, used);
+          p = fallbackFor(slot, side, teamRoster, used, true);
           if (p) lineup.notes.push(`ST ${slot.slot}: no listed ${slot.pos ? slot.pos.join('/') : 'returner'} — #${p.jersey != null ? p.jersey : p.number} ${p.name} fills in.`);
           else { lineup.notes.push(`ST ${slot.slot}: no eligible player.`); continue; }
         }

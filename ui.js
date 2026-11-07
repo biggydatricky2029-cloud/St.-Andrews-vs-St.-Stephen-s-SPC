@@ -72,7 +72,7 @@
   }
   function fillTeamSelect(sel, season, preferId, avoidId) {
     const s = FB.seasons.find(x => x.id === season) || FB.seasons[0];
-    sel.innerHTML = s.teams.map(t => '<option value="' + t.id + '">' + escapeHtml(t.teamName) + ' — ' + escapeHtml((t.record || '').split(' |')[0]) + '</option>').join('');
+    sel.innerHTML = s.teams.map(t => '<option value="' + t.id + '">' + escapeHtml(t.teamName) + ' — ' + escapeHtml((t.record || '').split(' |')[0]) + (t.players.length ? '' : ' (no player stats)') + '</option>').join('');
     const ids = s.teams.map(t => t.id);
     if (preferId && ids.includes(preferId)) sel.value = preferId;
     else if (avoidId) sel.value = ids.find(i => i !== avoidId) || ids[0];
